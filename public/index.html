@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Soccer Field Manager</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>⚽</text></svg>" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="ball">⚽</span> <span data-i18n="app.title">Soccer Field Manager</span></div>
+    <nav class="tabs" id="tabs">
+      <button class="tab is-active" data-view="board" data-i18n="nav.board">Tactics Board</button>
+      <button class="tab" data-view="squad" data-i18n="nav.squad">Squad</button>
+      <button class="tab" data-view="staff" data-i18n="nav.staff">Staff</button>
+      <button class="tab" data-view="formations" data-i18n="nav.formations">Formations</button>
+    </nav>
+    <label class="lang">
+      <span class="sr-only" data-i18n="lang.label">Language</span>
+      <select id="lang-select"></select>
+    </label>
+  </header>
+
+  <main>
+    <!-- ============================================================ BOARD -->
+    <section class="view is-active board-view" data-view="board">
+      <aside class="panel">
+        <div class="panel-block">
+          <div class="panel-head">
+            <h2 data-i18n="board.strategies">Strategies</h2>
+            <button class="btn btn-sm" id="new-strategy" data-i18n="board.new">+ New</button>
+          </div>
+          <ul class="list" id="strategy-list"></ul>
+        </div>
+
+        <div class="panel-block">
+          <h2 data-i18n="board.setup">Setup</h2>
+          <label class="field">
+            <span data-i18n="board.name">Name</span>
+            <input id="strategy-name" type="text" data-i18n-placeholder="board.namePlaceholder" />
+          </label>
+          <label class="field">
+            <span data-i18n="board.formation">Formation</span>
+            <select id="formation-select"></select>
+          </label>
+          <label class="field">
+            <span data-i18n="board.notes">Notes</span>
+            <textarea id="strategy-notes" rows="3" data-i18n-placeholder="board.notesPlaceholder"></textarea>
+          </label>
+          <div class="row">
+            <button class="btn btn-primary" id="save-strategy" data-i18n="board.save">Save</button>
+            <button class="btn" id="autofill" data-i18n="board.autofill">Auto-fill XI</button>
+            <button class="btn btn-danger" id="delete-strategy" data-i18n="board.delete">Delete</button>
+          </div>
+        </div>
+
+        <div class="panel-block grow">
+          <div class="panel-head">
+            <h2 data-i18n="board.bench">Bench &amp; unassigned</h2>
+            <span class="count" id="bench-count">0</span>
+          </div>
+          <p class="hint" data-i18n="board.benchHint"></p>
+          <ul class="bench" id="bench"></ul>
+        </div>
+      </aside>
+
+      <div class="board">
+        <div class="board-toolbar">
+          <div class="toolgroup phases" id="phases">
+            <button class="phase is-active" data-phase="open"
+                    data-i18n="phase.open" data-i18n-title="phase.openTitle">Open play</button>
+            <button class="phase" data-phase="kickoff"
+                    data-i18n="phase.kickoff" data-i18n-title="phase.kickoffTitle">Kick-off</button>
+          </div>
+          <div class="toolgroup" id="tools">
+            <button class="tool is-active" data-tool="select" data-i18n="tool.select" data-i18n-title="tool.selectTitle"></button>
+            <button class="tool" data-tool="run" data-i18n="tool.run" data-i18n-title="tool.runTitle"></button>
+            <button class="tool" data-tool="pass" data-i18n="tool.pass" data-i18n-title="tool.passTitle"></button>
+            <button class="tool" data-tool="dribble" data-i18n="tool.dribble" data-i18n-title="tool.dribbleTitle"></button>
+            <button class="tool" data-tool="line" data-i18n="tool.line" data-i18n-title="tool.lineTitle"></button>
+            <button class="tool" data-tool="zone" data-i18n="tool.zone" data-i18n-title="tool.zoneTitle"></button>
+            <button class="tool" data-tool="text" data-i18n="tool.text" data-i18n-title="tool.textTitle"></button>
+            <button class="tool" data-tool="erase" data-i18n="tool.erase" data-i18n-title="tool.eraseTitle"></button>
+          </div>
+          <div class="toolgroup swatches" id="swatches"></div>
+          <div class="toolgroup">
+            <button class="btn btn-sm" id="undo-draw" data-i18n="tool.undo" data-i18n-title="tool.undoTitle"></button>
+            <button class="btn btn-sm" id="clear-draw" data-i18n="tool.clear"></button>
+            <button class="btn btn-sm" id="reset-positions" data-i18n="tool.resetSpots" data-i18n-title="tool.resetSpotsTitle"></button>
+            <button class="btn btn-sm" id="save-formation-spots" hidden
+                    data-i18n="tool.saveSpots" data-i18n-title="tool.saveSpotsTitle"></button>
+          </div>
+          <span class="status" id="board-status"></span>
+        </div>
+
+        <div class="pitch-wrap">
+          <!-- viewBox is padded past 0..100 x 0..154 so the goals and corner arcs are not clipped -->
+          <svg id="pitch" viewBox="-2.5 -4 105 162" preserveAspectRatio="xMidYMid meet">
+            <defs>
+              <linearGradient id="turf" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#2f7d4f" />
+                <stop offset="100%" stop-color="#276b43" />
+              </linearGradient>
+            </defs>
+
+            <rect x="-2.5" y="-4" width="105" height="162" fill="url(#turf)" />
+            <g id="mow-stripes"></g>
+
+            <g class="markings" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="0.45">
+              <rect x="2" y="2" width="96" height="150" />
+              <line x1="2" y1="77" x2="98" y2="77" />
+              <circle cx="50" cy="77" r="13.46" />
+              <circle cx="50" cy="77" r="0.7" fill="rgba(255,255,255,.55)" />
+
+              <rect x="20.35" y="127.7" width="59.3" height="24.3" />
+              <rect x="36.55" y="143.9" width="26.9" height="8.1" />
+              <circle cx="50" cy="135.8" r="0.7" fill="rgba(255,255,255,.55)" />
+              <path d="M 39.25 127.7 A 13.46 13.46 0 0 1 60.75 127.7" />
+              <rect x="44.6" y="152" width="10.8" height="2.2" />
+
+              <rect x="20.35" y="2" width="59.3" height="24.3" />
+              <rect x="36.55" y="2" width="26.9" height="8.1" />
+              <circle cx="50" cy="18.2" r="0.7" fill="rgba(255,255,255,.55)" />
+              <path d="M 39.25 26.3 A 13.46 13.46 0 0 0 60.75 26.3" />
+              <rect x="44.6" y="-0.2" width="10.8" height="2.2" />
+
+              <path d="M 2 3.47 A 1.47 1.47 0 0 0 3.47 2" />
+              <path d="M 96.53 2 A 1.47 1.47 0 0 0 98 3.47" />
+              <path d="M 3.47 152 A 1.47 1.47 0 0 0 2 150.53" />
+              <path d="M 98 150.53 A 1.47 1.47 0 0 0 96.53 152" />
+            </g>
+
+            <!-- Only visible in the kick-off phase: the half we may not occupy. -->
+            <g id="layer-kickoff" style="display:none">
+              <rect x="-2.5" y="-4" width="105" height="81" fill="rgba(8,12,17,.5)" />
+              <line x1="-2.5" y1="77" x2="102.5" y2="77" stroke="#ffd166" stroke-width=".5" stroke-dasharray="2 1.5" />
+              <circle id="kickoff-circle" cx="50" cy="77" r="13.46" fill="none"
+                      stroke="#ffd166" stroke-width=".5" stroke-dasharray="2 1.5" />
+              <circle cx="50" cy="77" r="1.1" fill="#ffd166" />
+            </g>
+
+            <g id="layer-drawings"></g>
+            <g id="layer-preview"></g>
+            <g id="layer-slots"></g>
+          </svg>
+        </div>
+      </div>
+
+      <aside class="panel panel-right">
+        <div class="panel-block" id="kickoff-panel" hidden>
+          <h2 data-i18n="kickoff.title">Kick-off</h2>
+          <label class="check">
+            <input type="checkbox" id="takes-kickoff" checked />
+            <span data-i18n="kickoff.weTake">We take the kick-off</span>
+          </label>
+          <p class="hint" id="kickoff-rule"></p>
+          <button class="btn btn-sm" id="kickoff-auto" data-i18n="kickoff.build"></button>
+          <div id="kickoff-legal"></div>
+        </div>
+
+        <div class="panel-block">
+          <h2 data-i18n="board.lineup">Starting XI</h2>
+          <ul class="lineup" id="lineup"></ul>
+        </div>
+        <div class="panel-block grow">
+          <div class="panel-head">
+            <h2 data-i18n="board.drawings">Drawings</h2>
+            <span class="count" id="draw-count">0</span>
+          </div>
+          <p class="hint scope" id="drawing-scope"></p>
+          <ul class="list" id="drawing-list"></ul>
+        </div>
+      </aside>
+    </section>
+
+    <!-- ============================================================ SQUAD -->
+    <section class="view" data-view="squad">
+      <div class="crud">
+        <form class="card form" id="player-form">
+          <h2 id="player-form-title" data-i18n="squad.add">Add player</h2>
+          <input type="hidden" id="player-id" />
+          <label class="field"><span data-i18n="squad.name">Name *</span><input id="player-name" required maxlength="80" /></label>
+          <div class="grid2">
+            <label class="field"><span data-i18n="squad.number">Shirt #</span><input id="player-number" type="number" min="1" max="99" /></label>
+            <label class="field"><span data-i18n="squad.born">Born</span><input id="player-year" type="number" min="1930" max="2030" /></label>
+          </div>
+          <div class="grid2">
+            <label class="field"><span data-i18n="squad.primary">Primary position</span><select id="player-position"></select></label>
+            <label class="field"><span data-i18n="squad.secondary">Secondary</span><select id="player-position2"></select></label>
+          </div>
+          <div class="grid2">
+            <label class="field"><span data-i18n="squad.foot">Strong foot</span>
+              <select id="player-foot">
+                <option value="right" data-i18n="foot.right">Right</option>
+                <option value="left" data-i18n="foot.left">Left</option>
+                <option value="both" data-i18n="foot.both">Both</option>
+              </select>
+            </label>
+            <label class="field"><span data-i18n="squad.status">Status</span>
+              <select id="player-active">
+                <option value="1" data-i18n="squad.available">Available</option>
+                <option value="0" data-i18n="squad.unavailable">Unavailable</option>
+              </select>
+            </label>
+          </div>
+          <label class="field"><span data-i18n="squad.notes">Notes</span><textarea id="player-notes" rows="2"></textarea></label>
+          <div class="row">
+            <button class="btn btn-primary" type="submit" id="player-submit" data-i18n="squad.submitAdd">Add player</button>
+            <button class="btn" type="button" id="player-cancel" hidden data-i18n="squad.cancel">Cancel</button>
+          </div>
+        </form>
+
+        <div class="card table-card">
+          <div class="panel-head">
+            <h2><span data-i18n="squad.heading">Squad</span> <span class="count" id="squad-count">0</span></h2>
+            <input class="search" id="player-search" data-i18n-placeholder="squad.search" />
+          </div>
+          <div class="table-scroll">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th data-i18n="squad.colNumber">#</th>
+                  <th data-i18n="squad.colName">Name</th>
+                  <th data-i18n="squad.colPos">Pos</th>
+                  <th data-i18n="squad.colFoot">Foot</th>
+                  <th data-i18n="squad.colBorn">Born</th>
+                  <th data-i18n="squad.colStatus">Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="player-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ STAFF -->
+    <section class="view" data-view="staff">
+      <div class="crud">
+        <form class="card form" id="staff-form">
+          <h2 id="staff-form-title" data-i18n="staff.add">Add staff member</h2>
+          <input type="hidden" id="staff-id" />
+          <label class="field"><span data-i18n="staff.name">Name *</span><input id="staff-name" required maxlength="80" /></label>
+          <label class="field"><span data-i18n="staff.role">Role</span><select id="staff-role"></select></label>
+          <div class="grid2">
+            <label class="field"><span data-i18n="staff.email">Email</span><input id="staff-email" type="email" /></label>
+            <label class="field"><span data-i18n="staff.phone">Phone</span><input id="staff-phone" /></label>
+          </div>
+          <label class="field"><span data-i18n="staff.notes">Notes</span><textarea id="staff-notes" rows="2"></textarea></label>
+          <div class="row">
+            <button class="btn btn-primary" type="submit" id="staff-submit" data-i18n="staff.submitAdd">Add staff member</button>
+            <button class="btn" type="button" id="staff-cancel" hidden data-i18n="staff.cancel">Cancel</button>
+          </div>
+        </form>
+
+        <div class="card table-card">
+          <div class="panel-head">
+            <h2><span data-i18n="staff.heading">Coaching &amp; support</span> <span class="count" id="staff-count">0</span></h2>
+          </div>
+          <div class="table-scroll">
+            <table class="table">
+              <thead><tr>
+                <th data-i18n="staff.colName">Name</th>
+                <th data-i18n="staff.colRole">Role</th>
+                <th data-i18n="staff.colEmail">Email</th>
+                <th data-i18n="staff.colPhone">Phone</th>
+                <th></th>
+              </tr></thead>
+              <tbody id="staff-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================= FORMATIONS -->
+    <section class="view" data-view="formations">
+      <div class="formations-view">
+        <div class="card">
+          <div class="panel-head">
+            <h2><span data-i18n="formations.heading">Formations</span> <span class="count" id="formation-count">0</span></h2>
+          </div>
+          <p class="hint" data-i18n="formations.hint"></p>
+          <ul class="formation-list" id="formation-list"></ul>
+        </div>
+        <div class="card">
+          <h2 data-i18n="formations.explainTitle">How positions work</h2>
+          <p class="hint" data-i18n="formations.explainBody"></p>
+          <div class="toolgroup phases" id="preview-phases">
+            <button class="phase is-active" data-phase="open" data-i18n="phase.open"></button>
+            <button class="phase" data-phase="kickoff" data-i18n="phase.kickoff"></button>
+          </div>
+          <div id="formation-preview"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" hidden></div>
+  <div class="drag-ghost" id="drag-ghost" hidden></div>
+
+  <script src="/i18n.js"></script>
+  <script src="/kickoff.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

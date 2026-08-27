@@ -1,0 +1,561 @@
+'use strict';
+
+/*
+ * Translations. Every user-facing string in this app lives here and must exist
+ * in BOTH locales — `node scripts/check-i18n.js` fails the build otherwise.
+ *
+ * Markup uses data-i18n / data-i18n-placeholder / data-i18n-title.
+ * Code uses t('key', { param: value }); placeholders are written {likeThis}.
+ */
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else Object.assign(root, api);
+})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  const LOCALES = [
+    { code: 'en', label: 'English' },
+    { code: 'nl', label: 'Nederlands' },
+  ];
+
+  const TRANSLATIONS = {
+    en: {
+      // -- chrome ---------------------------------------------------------
+      'app.title': 'Soccer Field Manager',
+      'nav.board': 'Tactics Board',
+      'nav.squad': 'Squad',
+      'nav.staff': 'Staff',
+      'nav.formations': 'Formations',
+      'lang.label': 'Language',
+
+      // -- board: strategies ----------------------------------------------
+      'board.strategies': 'Strategies',
+      'board.new': '+ New',
+      'board.setup': 'Setup',
+      'board.name': 'Name',
+      'board.namePlaceholder': 'e.g. High press vs 4-3-3',
+      'board.formation': 'Formation',
+      'board.notes': 'Notes',
+      'board.notesPlaceholder': 'Instructions for the squad…',
+      'board.save': 'Save',
+      'board.autofill': 'Auto-fill XI',
+      'board.delete': 'Delete',
+      'board.bench': 'Bench & unassigned',
+      'board.benchHint': 'Drag a player onto a position. Drag a position onto another to swap.',
+      'board.benchEmptyAllPlaying': 'Everyone is on the pitch.',
+      'board.benchEmptyNoPlayers': 'No players yet — add some in the Squad tab.',
+      'board.noStrategies': 'No saved strategies yet.',
+      'board.noFormation': 'no formation',
+      'board.lineup': 'Starting XI',
+      'board.open': 'open',
+      'board.sendToBench': 'Send to bench',
+      'board.drawings': 'Drawings',
+      'board.drawingsHint': 'Pick a tool above and drag on the pitch.',
+      'board.drawingsFor': 'Shown on the {phase} board only.',
+
+      // -- board: phases ---------------------------------------------------
+      'phase.open': 'Open play',
+      'phase.openTitle': 'Shape once the ball is in play',
+      'phase.kickoff': 'Kick-off',
+      'phase.kickoffTitle': 'Starting positions — everyone in our own half',
+
+      // -- board: tools ----------------------------------------------------
+      'tool.select': '✥ Move',
+      'tool.selectTitle': 'Move players and positions',
+      'tool.run': '↗ Run',
+      'tool.runTitle': 'Player run (solid arrow)',
+      'tool.pass': '⇢ Pass',
+      'tool.passTitle': 'Pass (dashed arrow)',
+      'tool.dribble': '∿ Dribble',
+      'tool.dribbleTitle': 'Dribble (wavy arrow)',
+      'tool.line': '— Line',
+      'tool.lineTitle': 'Plain line',
+      'tool.zone': '▭ Zone',
+      'tool.zoneTitle': 'Zone / space to attack',
+      'tool.text': 'T Label',
+      'tool.textTitle': 'Text label',
+      'tool.erase': '⌫ Erase',
+      'tool.eraseTitle': 'Click a drawing to remove it',
+      'tool.undo': 'Undo',
+      'tool.undoTitle': 'Remove the last drawing',
+      'tool.clear': 'Clear drawings',
+      'tool.resetSpots': 'Reset spots',
+      'tool.resetSpotsTitle': 'Snap every position back to the formation default',
+      'tool.saveSpots': 'Save spots → formation',
+      'tool.saveSpotsTitle': 'Bake the current spots into this custom formation',
+
+      // -- drawing names ----------------------------------------------------
+      'drawing.run': 'Run',
+      'drawing.pass': 'Pass',
+      'drawing.dribble': 'Dribble',
+      'drawing.line': 'Line',
+      'drawing.zone': 'Zone',
+      'drawing.text': 'Label',
+      'drawing.arrow': 'Arrow',
+      'drawing.defaultLabel': 'Label',
+
+      // -- kick-off panel ---------------------------------------------------
+      'kickoff.title': 'Kick-off',
+      'kickoff.weTake': 'We take the kick-off',
+      'kickoff.ruleWeTake': 'Everyone but the player on the ball must be in our own half.',
+      'kickoff.ruleTheyTake': 'Everyone must be in our own half and 9.15 m from the ball — outside the centre circle.',
+      'kickoff.build': 'Build from open play',
+      'kickoff.legal': 'Legal kick-off shape.',
+      'kickoff.issue.tooManyOverLine': '{count} players are over the halfway line — only the one taking the kick-off may be.',
+      'kickoff.issue.notOnBall': '{name} is in the opponent half but not on the ball.',
+      'kickoff.issue.inOpponentHalf': '{name} is in the opponent half.',
+      'kickoff.issue.insideCircle': '{name} is inside the centre circle — must be 9.15 m from the ball.',
+
+      // -- squad -------------------------------------------------------------
+      'squad.add': 'Add player',
+      'squad.edit': 'Edit {name}',
+      'squad.name': 'Name *',
+      'squad.number': 'Shirt #',
+      'squad.born': 'Born',
+      'squad.primary': 'Primary position',
+      'squad.secondary': 'Secondary',
+      'squad.foot': 'Strong foot',
+      'squad.status': 'Status',
+      'squad.notes': 'Notes',
+      'squad.submitAdd': 'Add player',
+      'squad.submitSave': 'Save changes',
+      'squad.cancel': 'Cancel',
+      'squad.heading': 'Squad',
+      'squad.search': 'Search name or position…',
+      'squad.colNumber': '#',
+      'squad.colName': 'Name',
+      'squad.colPos': 'Pos',
+      'squad.colFoot': 'Foot',
+      'squad.colBorn': 'Born',
+      'squad.colStatus': 'Status',
+      'squad.available': 'Available',
+      'squad.unavailable': 'Unavailable',
+      'squad.out': 'Out',
+      'squad.empty': 'No players yet — add one on the left.',
+      'squad.noMatch': 'No player matches that search.',
+      'squad.none': '—',
+      'action.edit': 'Edit',
+      'action.delete': 'Delete',
+
+      'foot.right': 'Right',
+      'foot.left': 'Left',
+      'foot.both': 'Both',
+
+      // -- staff --------------------------------------------------------------
+      'staff.add': 'Add staff member',
+      'staff.edit': 'Edit {name}',
+      'staff.name': 'Name *',
+      'staff.role': 'Role',
+      'staff.email': 'Email',
+      'staff.phone': 'Phone',
+      'staff.notes': 'Notes',
+      'staff.submitAdd': 'Add staff member',
+      'staff.submitSave': 'Save changes',
+      'staff.cancel': 'Cancel',
+      'staff.heading': 'Coaching & support',
+      'staff.colName': 'Name',
+      'staff.colRole': 'Role',
+      'staff.colEmail': 'Email',
+      'staff.colPhone': 'Phone',
+      'staff.empty': 'No coaches or trainers yet.',
+
+      'role.head_coach': 'Head Coach',
+      'role.assistant_coach': 'Assistant Coach',
+      'role.goalkeeper_coach': 'Goalkeeper Coach',
+      'role.fitness_trainer': 'Fitness Trainer',
+      'role.physiotherapist': 'Physiotherapist',
+      'role.performance_analyst': 'Performance Analyst',
+      'role.team_manager': 'Team Manager',
+      'role.scout': 'Scout',
+      'role.kit_manager': 'Kit Manager',
+
+      // -- formations ----------------------------------------------------------
+      'formations.heading': 'Formations',
+      'formations.hint': 'Built-in setups are read-only. Duplicate one to get an editable copy, then drag its positions around on the tactics board and save it back here.',
+      'formations.builtin': 'built-in',
+      'formations.custom': 'custom',
+      'formations.use': 'Use',
+      'formations.duplicate': 'Duplicate',
+      'formations.delete': 'Delete',
+      'formations.positions': '{count} positions',
+      'formations.explainTitle': 'How positions work',
+      'formations.explainBody': 'A formation is a set of eleven spots on the pitch. A strategy binds players to those spots and can nudge any spot without changing the formation itself — so 4-4-2 stays 4-4-2 while your left back pushes ten metres higher for one game plan.',
+      'formations.copyPrompt': 'Name for the copy',
+      'formations.copySuffix': '{name} (copy)',
+
+      'formation.desc.4-4-2': 'Two banks of four. Balanced and easy to drill.',
+      'formation.desc.4-3-3': 'Wide front three, single pivot behind two eights.',
+      'formation.desc.4-2-3-1': 'Double pivot with a free ten behind a lone striker.',
+      'formation.desc.4-1-4-1': 'Compact mid block, one anchor, one striker.',
+      'formation.desc.4-4-2 Diamond': 'Narrow midfield diamond, full backs supply the width.',
+      'formation.desc.3-5-2': 'Back three with wing backs pushed high.',
+      'formation.desc.5-3-2': 'Back five that drops in, two strikers to counter.',
+
+      // -- position / slot names --------------------------------------------------
+      'slot.GK': 'Goalkeeper',
+      'slot.LB': 'Left Back',
+      'slot.RB': 'Right Back',
+      'slot.CB': 'Centre Back',
+      'slot.LCB': 'Left Centre Back',
+      'slot.RCB': 'Right Centre Back',
+      'slot.LWB': 'Left Wing Back',
+      'slot.RWB': 'Right Wing Back',
+      'slot.CDM': 'Holding Midfielder',
+      'slot.LDM': 'Left Pivot',
+      'slot.RDM': 'Right Pivot',
+      'slot.CM': 'Central Midfielder',
+      'slot.LCM': 'Left Central Midfielder',
+      'slot.RCM': 'Right Central Midfielder',
+      'slot.CAM': 'Attacking Midfielder',
+      'slot.LAM': 'Left Attacking Midfielder',
+      'slot.RAM': 'Right Attacking Midfielder',
+      'slot.LM': 'Left Midfielder',
+      'slot.RM': 'Right Midfielder',
+      'slot.LW': 'Left Wing',
+      'slot.RW': 'Right Wing',
+      'slot.ST': 'Striker',
+      'slot.LST': 'Left Striker',
+      'slot.RST': 'Right Striker',
+      'slot.empty': 'empty',
+
+      // -- toasts, prompts, status -------------------------------------------------
+      'toast.playerAdded': 'Player added',
+      'toast.playerUpdated': 'Player updated',
+      'toast.playerDeleted': 'Player deleted',
+      'toast.staffAdded': 'Staff added',
+      'toast.staffUpdated': 'Staff updated',
+      'toast.staffDeleted': 'Staff deleted',
+      'toast.strategySaved': 'Strategy saved',
+      'toast.strategyDeleted': 'Strategy deleted',
+      'toast.formationApplied': 'Formation applied to the board',
+      'toast.formationDuplicated': 'Formation duplicated — edit its spots on the board',
+      'toast.formationDeleted': 'Formation deleted',
+      'toast.spotsSaved': 'Spots saved into "{name}"',
+      'toast.kickoffBuilt': 'Kick-off shape built from the open-play shape',
+      'toast.lineupFilled': 'Starting XI filled',
+      'toast.lineupPartial': 'Filled {filled} of {total} — add more available players',
+
+      'confirm.deletePlayer': 'Delete {name}? They will be removed from every strategy.',
+      'confirm.deleteStaff': 'Delete {name}?',
+      'confirm.deleteStrategy': 'Delete strategy "{name}"?',
+      'confirm.deleteFormation': 'Delete formation "{name}"?',
+      'confirm.clearDrawings': 'Remove all drawings from the "{phase}" board?',
+      'prompt.labelText': 'Label text',
+
+      'status.newStrategy': 'New strategy — press Save to store it',
+      'status.unsaved': 'Unsaved changes…',
+      'status.saved': 'Saved {time}',
+      'status.loaded': 'Loaded · last saved {date} UTC',
+      'status.untitled': 'Untitled strategy',
+
+      // -- server error codes ---------------------------------------------------------
+      'error.required': '"{field}" is required',
+      'error.notFound': 'Not found',
+      'error.playerNotFound': 'Player not found',
+      'error.staffNotFound': 'Staff member not found',
+      'error.formationNotFound': 'Formation not found',
+      'error.strategyNotFound': 'Strategy not found',
+      'error.builtinReadonly': 'Built-in formations cannot be edited — duplicate it first',
+      'error.builtinUndeletable': 'Built-in formations cannot be deleted',
+      'error.duplicateFormation': 'A formation named "{name}" already exists',
+      'error.unknownFormation': 'Unknown formation',
+      'error.slotsRequired': 'A formation needs at least one slot',
+      'error.slotsTooMany': 'A formation cannot have more than 11 slots',
+      'error.badJson': 'Body is not valid JSON',
+      'error.tooLarge': 'Payload too large',
+      'error.methodNotAllowed': 'Method not allowed',
+      'error.forbidden': 'Forbidden',
+      'error.server': 'Internal server error',
+    },
+
+    nl: {
+      // -- chrome ---------------------------------------------------------
+      'app.title': 'Voetbalveld Manager',
+      'nav.board': 'Tactiekbord',
+      'nav.squad': 'Selectie',
+      'nav.staff': 'Staf',
+      'nav.formations': 'Opstellingen',
+      'lang.label': 'Taal',
+
+      // -- board: strategies ----------------------------------------------
+      'board.strategies': 'Speelplannen',
+      'board.new': '+ Nieuw',
+      'board.setup': 'Instellingen',
+      'board.name': 'Naam',
+      'board.namePlaceholder': 'bijv. Hoge druk tegen 4-3-3',
+      'board.formation': 'Opstelling',
+      'board.notes': 'Notities',
+      'board.notesPlaceholder': 'Instructies voor de selectie…',
+      'board.save': 'Opslaan',
+      'board.autofill': 'Basiself invullen',
+      'board.delete': 'Verwijderen',
+      'board.bench': 'Bank & niet opgesteld',
+      'board.benchHint': 'Sleep een speler op een positie. Sleep een positie op een andere om te wisselen.',
+      'board.benchEmptyAllPlaying': 'Iedereen staat op het veld.',
+      'board.benchEmptyNoPlayers': 'Nog geen spelers — voeg ze toe bij Selectie.',
+      'board.noStrategies': 'Nog geen speelplannen opgeslagen.',
+      'board.noFormation': 'geen opstelling',
+      'board.lineup': 'Basiself',
+      'board.open': 'vrij',
+      'board.sendToBench': 'Naar de bank',
+      'board.drawings': 'Tekeningen',
+      'board.drawingsHint': 'Kies hierboven een gereedschap en sleep over het veld.',
+      'board.drawingsFor': 'Alleen zichtbaar op het bord "{phase}".',
+
+      // -- board: phases ---------------------------------------------------
+      'phase.open': 'Veldspel',
+      'phase.openTitle': 'Opstelling zodra de bal in het spel is',
+      'phase.kickoff': 'Aftrap',
+      'phase.kickoffTitle': 'Beginposities — iedereen op de eigen helft',
+
+      // -- board: tools ----------------------------------------------------
+      'tool.select': '✥ Verplaatsen',
+      'tool.selectTitle': 'Spelers en posities verplaatsen',
+      'tool.run': '↗ Loop',
+      'tool.runTitle': 'Loopactie (doorgetrokken pijl)',
+      'tool.pass': '⇢ Pass',
+      'tool.passTitle': 'Pass (stippellijn met pijl)',
+      'tool.dribble': '∿ Dribbel',
+      'tool.dribbleTitle': 'Dribbel (golvende pijl)',
+      'tool.line': '— Lijn',
+      'tool.lineTitle': 'Gewone lijn',
+      'tool.zone': '▭ Zone',
+      'tool.zoneTitle': 'Zone / ruimte om aan te vallen',
+      'tool.text': 'T Tekst',
+      'tool.textTitle': 'Tekstlabel',
+      'tool.erase': '⌫ Wissen',
+      'tool.eraseTitle': 'Klik op een tekening om die te verwijderen',
+      'tool.undo': 'Ongedaan maken',
+      'tool.undoTitle': 'Verwijder de laatste tekening',
+      'tool.clear': 'Tekeningen wissen',
+      'tool.resetSpots': 'Posities herstellen',
+      'tool.resetSpotsTitle': 'Zet elke positie terug op de standaard van de opstelling',
+      'tool.saveSpots': 'Posities opslaan → opstelling',
+      'tool.saveSpotsTitle': 'Leg de huidige posities vast in deze eigen opstelling',
+
+      // -- drawing names ----------------------------------------------------
+      'drawing.run': 'Loopactie',
+      'drawing.pass': 'Pass',
+      'drawing.dribble': 'Dribbel',
+      'drawing.line': 'Lijn',
+      'drawing.zone': 'Zone',
+      'drawing.text': 'Tekst',
+      'drawing.arrow': 'Pijl',
+      'drawing.defaultLabel': 'Tekst',
+
+      // -- kick-off panel ---------------------------------------------------
+      'kickoff.title': 'Aftrap',
+      'kickoff.weTake': 'Wij nemen de aftrap',
+      'kickoff.ruleWeTake': 'Iedereen behalve de speler op de bal moet op de eigen helft staan.',
+      'kickoff.ruleTheyTake': 'Iedereen moet op de eigen helft staan en 9,15 m van de bal — buiten de middencirkel.',
+      'kickoff.build': 'Afleiden uit veldspel',
+      'kickoff.legal': 'Geldige aftrapopstelling.',
+      'kickoff.issue.tooManyOverLine': '{count} spelers staan over de middenlijn — alleen degene die aftrapt mag dat.',
+      'kickoff.issue.notOnBall': '{name} staat op de helft van de tegenstander maar niet op de bal.',
+      'kickoff.issue.inOpponentHalf': '{name} staat op de helft van de tegenstander.',
+      'kickoff.issue.insideCircle': '{name} staat in de middencirkel — moet 9,15 m van de bal blijven.',
+
+      // -- squad -------------------------------------------------------------
+      'squad.add': 'Speler toevoegen',
+      'squad.edit': '{name} bewerken',
+      'squad.name': 'Naam *',
+      'squad.number': 'Rugnummer',
+      'squad.born': 'Geboortejaar',
+      'squad.primary': 'Hoofdpositie',
+      'squad.secondary': 'Tweede positie',
+      'squad.foot': 'Sterke voet',
+      'squad.status': 'Status',
+      'squad.notes': 'Notities',
+      'squad.submitAdd': 'Speler toevoegen',
+      'squad.submitSave': 'Wijzigingen opslaan',
+      'squad.cancel': 'Annuleren',
+      'squad.heading': 'Selectie',
+      'squad.search': 'Zoek op naam of positie…',
+      'squad.colNumber': '#',
+      'squad.colName': 'Naam',
+      'squad.colPos': 'Pos',
+      'squad.colFoot': 'Voet',
+      'squad.colBorn': 'Geboren',
+      'squad.colStatus': 'Status',
+      'squad.available': 'Beschikbaar',
+      'squad.unavailable': 'Niet beschikbaar',
+      'squad.out': 'Afwezig',
+      'squad.empty': 'Nog geen spelers — voeg er links een toe.',
+      'squad.noMatch': 'Geen speler gevonden met die zoekterm.',
+      'squad.none': '—',
+      'action.edit': 'Bewerken',
+      'action.delete': 'Verwijderen',
+
+      'foot.right': 'Rechts',
+      'foot.left': 'Links',
+      'foot.both': 'Beide',
+
+      // -- staff --------------------------------------------------------------
+      'staff.add': 'Staflid toevoegen',
+      'staff.edit': '{name} bewerken',
+      'staff.name': 'Naam *',
+      'staff.role': 'Functie',
+      'staff.email': 'E-mail',
+      'staff.phone': 'Telefoon',
+      'staff.notes': 'Notities',
+      'staff.submitAdd': 'Staflid toevoegen',
+      'staff.submitSave': 'Wijzigingen opslaan',
+      'staff.cancel': 'Annuleren',
+      'staff.heading': 'Technische staf',
+      'staff.colName': 'Naam',
+      'staff.colRole': 'Functie',
+      'staff.colEmail': 'E-mail',
+      'staff.colPhone': 'Telefoon',
+      'staff.empty': 'Nog geen trainers of begeleiders.',
+
+      'role.head_coach': 'Hoofdtrainer',
+      'role.assistant_coach': 'Assistent-trainer',
+      'role.goalkeeper_coach': 'Keeperstrainer',
+      'role.fitness_trainer': 'Fysiektrainer',
+      'role.physiotherapist': 'Fysiotherapeut',
+      'role.performance_analyst': 'Data-analist',
+      'role.team_manager': 'Teammanager',
+      'role.scout': 'Scout',
+      'role.kit_manager': 'Materiaalman',
+
+      // -- formations ----------------------------------------------------------
+      'formations.heading': 'Opstellingen',
+      'formations.hint': 'Standaardopstellingen zijn alleen-lezen. Dupliceer er een voor een bewerkbare kopie, sleep de posities op het tactiekbord en sla ze hier weer op.',
+      'formations.builtin': 'standaard',
+      'formations.custom': 'eigen',
+      'formations.use': 'Gebruiken',
+      'formations.duplicate': 'Dupliceren',
+      'formations.delete': 'Verwijderen',
+      'formations.positions': '{count} posities',
+      'formations.explainTitle': 'Hoe posities werken',
+      'formations.explainBody': 'Een opstelling is een set van elf plekken op het veld. Een speelplan koppelt spelers aan die plekken en kan elke plek verschuiven zonder de opstelling zelf te wijzigen — zo blijft 4-4-2 gewoon 4-4-2 terwijl je linksback voor één plan tien meter hoger staat.',
+      'formations.copyPrompt': 'Naam voor de kopie',
+      'formations.copySuffix': '{name} (kopie)',
+
+      'formation.desc.4-4-2': 'Twee linies van vier. Uitgebalanceerd en makkelijk in te slijpen.',
+      'formation.desc.4-3-3': 'Brede voorhoede, één controleur achter twee middenvelders.',
+      'formation.desc.4-2-3-1': 'Dubbele controleur met een vrije tien achter één spits.',
+      'formation.desc.4-1-4-1': 'Compact blok, één controleur, één spits.',
+      'formation.desc.4-4-2 Diamond': 'Smalle ruit op het middenveld, de backs zorgen voor de breedte.',
+      'formation.desc.3-5-2': 'Drie centrale verdedigers met hoog spelende wingbacks.',
+      'formation.desc.5-3-2': 'Vijf verdedigers die inzakken, twee spitsen voor de counter.',
+
+      // -- position / slot names --------------------------------------------------
+      'slot.GK': 'Keeper',
+      'slot.LB': 'Linksback',
+      'slot.RB': 'Rechtsback',
+      'slot.CB': 'Centrale verdediger',
+      'slot.LCB': 'Linker centrale verdediger',
+      'slot.RCB': 'Rechter centrale verdediger',
+      'slot.LWB': 'Linkervleugelverdediger',
+      'slot.RWB': 'Rechtervleugelverdediger',
+      'slot.CDM': 'Controlerende middenvelder',
+      'slot.LDM': 'Linker controleur',
+      'slot.RDM': 'Rechter controleur',
+      'slot.CM': 'Centrale middenvelder',
+      'slot.LCM': 'Linker centrale middenvelder',
+      'slot.RCM': 'Rechter centrale middenvelder',
+      'slot.CAM': 'Aanvallende middenvelder',
+      'slot.LAM': 'Linker aanvallende middenvelder',
+      'slot.RAM': 'Rechter aanvallende middenvelder',
+      'slot.LM': 'Linkermiddenvelder',
+      'slot.RM': 'Rechtermiddenvelder',
+      'slot.LW': 'Linksbuiten',
+      'slot.RW': 'Rechtsbuiten',
+      'slot.ST': 'Spits',
+      'slot.LST': 'Linker spits',
+      'slot.RST': 'Rechter spits',
+      'slot.empty': 'leeg',
+
+      // -- toasts, prompts, status -------------------------------------------------
+      'toast.playerAdded': 'Speler toegevoegd',
+      'toast.playerUpdated': 'Speler bijgewerkt',
+      'toast.playerDeleted': 'Speler verwijderd',
+      'toast.staffAdded': 'Staflid toegevoegd',
+      'toast.staffUpdated': 'Staflid bijgewerkt',
+      'toast.staffDeleted': 'Staflid verwijderd',
+      'toast.strategySaved': 'Speelplan opgeslagen',
+      'toast.strategyDeleted': 'Speelplan verwijderd',
+      'toast.formationApplied': 'Opstelling toegepast op het bord',
+      'toast.formationDuplicated': 'Opstelling gedupliceerd — pas de posities aan op het bord',
+      'toast.formationDeleted': 'Opstelling verwijderd',
+      'toast.spotsSaved': 'Posities opgeslagen in "{name}"',
+      'toast.kickoffBuilt': 'Aftrapopstelling afgeleid uit het veldspel',
+      'toast.lineupFilled': 'Basiself ingevuld',
+      'toast.lineupPartial': '{filled} van {total} ingevuld — voeg meer beschikbare spelers toe',
+
+      'confirm.deletePlayer': '{name} verwijderen? De speler verdwijnt uit elk speelplan.',
+      'confirm.deleteStaff': '{name} verwijderen?',
+      'confirm.deleteStrategy': 'Speelplan "{name}" verwijderen?',
+      'confirm.deleteFormation': 'Opstelling "{name}" verwijderen?',
+      'confirm.clearDrawings': 'Alle tekeningen van het bord "{phase}" verwijderen?',
+      'prompt.labelText': 'Tekst voor het label',
+
+      'status.newStrategy': 'Nieuw speelplan — druk op Opslaan',
+      'status.unsaved': 'Niet-opgeslagen wijzigingen…',
+      'status.saved': 'Opgeslagen om {time}',
+      'status.loaded': 'Geladen · laatst opgeslagen {date} UTC',
+      'status.untitled': 'Naamloos speelplan',
+
+      // -- server error codes ---------------------------------------------------------
+      'error.required': '"{field}" is verplicht',
+      'error.notFound': 'Niet gevonden',
+      'error.playerNotFound': 'Speler niet gevonden',
+      'error.staffNotFound': 'Staflid niet gevonden',
+      'error.formationNotFound': 'Opstelling niet gevonden',
+      'error.strategyNotFound': 'Speelplan niet gevonden',
+      'error.builtinReadonly': 'Standaardopstellingen kunnen niet worden bewerkt — dupliceer er eerst een',
+      'error.builtinUndeletable': 'Standaardopstellingen kunnen niet worden verwijderd',
+      'error.duplicateFormation': 'Er bestaat al een opstelling met de naam "{name}"',
+      'error.unknownFormation': 'Onbekende opstelling',
+      'error.slotsRequired': 'Een opstelling heeft minstens één positie nodig',
+      'error.slotsTooMany': 'Een opstelling kan niet meer dan 11 posities hebben',
+      'error.badJson': 'De inhoud is geen geldige JSON',
+      'error.tooLarge': 'Verzoek te groot',
+      'error.methodNotAllowed': 'Methode niet toegestaan',
+      'error.forbidden': 'Geen toegang',
+      'error.server': 'Interne serverfout',
+    },
+  };
+
+  const FALLBACK = 'en';
+  let locale = FALLBACK;
+
+  function interpolate(text, params) {
+    if (!params) return text;
+    return text.replace(/\{(\w+)\}/g, (whole, key) =>
+      (params[key] === undefined ? whole : params[key]));
+  }
+
+  /** Translates `key`. Unknown keys return the key itself so gaps are obvious. */
+  function t(key, params) {
+    const table = TRANSLATIONS[locale] || TRANSLATIONS[FALLBACK];
+    const text = table[key] !== undefined ? table[key] : TRANSLATIONS[FALLBACK][key];
+    return text === undefined ? key : interpolate(text, params);
+  }
+
+  /** True when the key exists, so callers can fall back to a database value. */
+  const hasKey = (key) => TRANSLATIONS[FALLBACK][key] !== undefined;
+
+  const getLocale = () => locale;
+
+  function setLocale(next) {
+    locale = TRANSLATIONS[next] ? next : FALLBACK;
+    return locale;
+  }
+
+  /** Applies data-i18n attributes across a subtree. */
+  function applyTranslations(root) {
+    const scope = root || document;
+    scope.querySelectorAll('[data-i18n]').forEach((el) => {
+      el.textContent = t(el.dataset.i18n);
+    });
+    scope.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
+      el.placeholder = t(el.dataset.i18nPlaceholder);
+    });
+    scope.querySelectorAll('[data-i18n-title]').forEach((el) => {
+      el.title = t(el.dataset.i18nTitle);
+    });
+  }
+
+  return { LOCALES, TRANSLATIONS, t, hasKey, getLocale, setLocale, applyTranslations };
+});
