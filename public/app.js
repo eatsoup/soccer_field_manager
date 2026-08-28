@@ -75,21 +75,20 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
 
 /* ================================================================= api */
 
+/*
+ * There is no server: `Store` (store.js) answers the same paths out of
+ * localStorage. It fails the same way too — a stable `code` we translate,
+ * with its English message as the fallback.
+ */
 async function api(method, path, body) {
-  const res = await fetch(path, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    // The server sends a stable code; fall back to its English message.
-    const message = data.code && hasKey(`error.${data.code}`)
-      ? t(`error.${data.code}`, data.params)
-      : (data.error || `${method} ${path} failed (${res.status})`);
+  try {
+    return await Store.request(method, path, body);
+  } catch (err) {
+    const message = err.code && hasKey(`error.${err.code}`)
+      ? t(`error.${err.code}`, err.params)
+      : (err.message || `${method} ${path} failed`);
     throw new Error(message);
   }
-  return data;
 }
 
 let toastTimer = null;
@@ -1325,6 +1324,9 @@ async function loadStrategies() {
   fillPositionSelects();
   refreshFormTitles();
   showView(location.hash.slice(1) || 'board');
+  // Private-mode browsers can refuse localStorage; the app still runs, but
+  // whatever you do is gone when the tab closes, so say so.
+  if (!Store.persistent) toast(t('toast.storageUnavailable'), true);
   try {
     await loadFormations();
     await Promise.all([loadPlayers(), loadStaff(), loadStrategies()]);

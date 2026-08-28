@@ -1,19 +1,37 @@
 # Soccer Field Manager
 
 A web app for running a squad: players, coaching staff, formations, and a
-drag-and-drop tactics board with arrows. Everything is stored in a local SQLite
-file.
-
-No dependencies. Node 22.5+ (uses the built-in `node:sqlite` and `node:http`).
+drag-and-drop tactics board with arrows. It is a static site — no backend, no
+build step, no dependencies. Everything you enter is stored in the browser's
+`localStorage`, on the machine you enter it on.
 
 ```bash
-node server.js          # or: npm start
+npm start               # or: node scripts/serve.js
 # → http://localhost:3000
 ```
 
-Set `PORT` to change the port and `SOCCER_DB` to point at a different database
-file. The database is created and seeded with the built-in formations on first
-run.
+`scripts/serve.js` is a plain static file server for local development; set
+`PORT` to change the port. Any static server works — `npx serve public` does
+the same job. Opening `public/index.html` straight off the disk works as well,
+though some browsers refuse `localStorage` on `file://` pages — the app then
+warns that nothing will be kept.
+
+## Publishing
+
+The site is `public/`. `.github/workflows/pages.yml` runs `npm test`, then
+deploys that directory to GitHub Pages on every push to `main`; pull requests
+run the same tests but stop short of publishing, and the workflow can also be
+started by hand from the Actions tab. There is no build step — the directory is
+uploaded as it is.
+
+Enable it once, in the repository: **Settings → Pages → Build and deployment →
+Source: GitHub Actions**. The deployed URL shows up on the workflow run. It
+works from a project page (`user.github.io/repo/`) as well as a user page —
+every asset is referenced relatively.
+
+Each visitor gets their own empty squad, seeded with the built-in formations,
+because the data never leaves their browser. Nothing is shared between people
+or between devices, and clearing site data clears the squad.
 
 ## What's in it
 
@@ -87,7 +105,7 @@ language decides.
 Everything user-facing is translated, including data-driven text: staff roles
 (stored as stable keys like `head_coach`, so a role keeps its meaning across
 languages), position names, built-in formation descriptions, kick-off rule
-violations, and API error messages — the server returns a stable `code` and the
+violations, and store error messages — the store raises a stable `code` and the
 browser renders it in the active language.
 
 ### Adding or changing text
@@ -108,24 +126,37 @@ Adding a language means one more entry in `LOCALES` and one more table in
 
 ## Layout
 
+Everything under `public/` is the deployed site; everything outside it is
+tooling that never ships.
+
 | File | Role |
 | --- | --- |
-| `server.js` | HTTP server, JSON REST API, static files |
-| `db.js` | Schema, migrations, built-in formation seed data |
-| `public/i18n.js` | Translation tables (English + Dutch) and the `t()` helper |
-| `scripts/check-i18n.js` | Fails if a key is missing from a locale or referenced but undefined |
-| `public/kickoff.js` | Kick-off geometry and rule checks, shared by seeder and browser |
 | `public/index.html` | Markup and the SVG pitch |
 | `public/app.js` | All client logic |
+| `public/store.js` | The database: localStorage document, validation, built-in formation seed data |
+| `public/i18n.js` | Translation tables (English + Dutch) and the `t()` helper |
+| `public/kickoff.js` | Kick-off geometry and rule checks, shared by the store and the board |
 | `public/styles.css` | Styling |
+| `scripts/serve.js` | Static file server for local development |
+| `scripts/test-store.js` | Tests the store against the contract `app.js` relies on |
+| `scripts/check-i18n.js` | Fails if a key is missing from a locale or referenced but undefined |
 
 The pitch uses a 0–100 coordinate space on both axes; the SVG is 100 × 154 so
 the drawing stays proportional to a real 68 m × 105 m field. `y = 100` is your
 own goal line, `y = 0` the opponent's, so our own half is `y >= 50` and the
-centre spot is `(50, 50)`. Kick-off spots are clamped to `y >= 50` on the server
-as well as in the browser.
+centre spot is `(50, 50)`. Kick-off spots are clamped to `y >= 50` by the store
+as well as by the board.
 
-## API
+## Where the data lives
+
+One JSON document under the `localStorage` key `soccer.db.v1`, holding
+SQL-shaped tables: `players`, `staff`, `formations`, `formation_slots`,
+`strategies`, `strategy_assignments`, `strategy_drawings`. Built-in formations
+are seeded into an empty document on first load.
+
+`store.js` reaches the rest of the app through one function that deliberately
+looks like the REST API this used to be, so `app.js` neither knows nor cares
+that the server is gone:
 
 ```
 GET    /api/players           POST /api/players
@@ -144,6 +175,26 @@ DELETE /api/strategies/:id
 
 Assignments carry `x`/`y` (open play) and `kickoff_x`/`kickoff_y` (starting
 positions) but a single `player_id` shared by both phases; drawings carry
-`phase` (`open` or `kickoff`); strategies carry `takes_kickoff`. `PUT /api/strategies/:id` replaces
-the strategy's assignments and drawings wholesale. Assignments referencing a slot outside the strategy's formation, or a
-player that no longer exists, are dropped rather than rejected.
+`phase` (`open` or `kickoff`); strategies carry `takes_kickoff`.
+`PUT /api/strategies/:id` replaces the strategy's assignments and drawings
+wholesale. Assignments referencing a slot outside the strategy's formation, or
+a player that no longer exists, are dropped rather than rejected. Deletes
+cascade the way the foreign keys used to: deleting a player empties their slot,
+deleting a formation leaves its strategies without one.
+
+Writes are persisted only after the whole call succeeds, so a rejected payload
+leaves nothing half-applied, and reads go back to `localStorage` each time so a
+second tab sees the first one's work on its next action.
+
+```bash
+node scripts/test-store.js    # or: npm test — also runs the i18n check
+```
+
+Failures carry a stable `code` (`playerNotFound`, `builtinReadonly`,
+`storageFull`, …) that the browser renders in the active language.
+
+**Resetting** — `Store.reset()` from the browser console wipes the document;
+the built-in formations come back on the next load. Clearing the site's data in
+browser settings does the same. If a browser refuses `localStorage` altogether
+(private mode, some file:// setups) the app still runs on an in-memory store
+for the session and says so with a warning toast.

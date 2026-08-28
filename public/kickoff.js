@@ -1,7 +1,7 @@
 'use strict';
 
 /*
- * Kick-off geometry, shared by the seeder (db.js) and the browser.
+ * Kick-off geometry, shared by the store (store.js) and the board.
  *
  * Laws of the Game, kick-off:
  *   - All players except the one taking the kick-off must be in their own half.

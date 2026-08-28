@@ -233,6 +233,7 @@
       'toast.kickoffBuilt': 'Kick-off shape built from the open-play shape',
       'toast.lineupFilled': 'Starting XI filled',
       'toast.lineupPartial': 'Filled {filled} of {total} — add more available players',
+      'toast.storageUnavailable': 'This browser blocks local storage — your work will be lost when the tab closes',
 
       'confirm.deletePlayer': 'Delete {name}? They will be removed from every strategy.',
       'confirm.deleteStaff': 'Delete {name}?',
@@ -260,11 +261,8 @@
       'error.unknownFormation': 'Unknown formation',
       'error.slotsRequired': 'A formation needs at least one slot',
       'error.slotsTooMany': 'A formation cannot have more than 11 slots',
-      'error.badJson': 'Body is not valid JSON',
-      'error.tooLarge': 'Payload too large',
       'error.methodNotAllowed': 'Method not allowed',
-      'error.forbidden': 'Forbidden',
-      'error.server': 'Internal server error',
+      'error.storageFull': 'Browser storage is full — delete a strategy to free space',
     },
 
     nl: {
@@ -482,6 +480,7 @@
       'toast.kickoffBuilt': 'Aftrapopstelling afgeleid uit het veldspel',
       'toast.lineupFilled': 'Basiself ingevuld',
       'toast.lineupPartial': '{filled} van {total} ingevuld — voeg meer beschikbare spelers toe',
+      'toast.storageUnavailable': 'Deze browser blokkeert lokale opslag — je werk verdwijnt zodra het tabblad sluit',
 
       'confirm.deletePlayer': '{name} verwijderen? De speler verdwijnt uit elk speelplan.',
       'confirm.deleteStaff': '{name} verwijderen?',
@@ -509,11 +508,8 @@
       'error.unknownFormation': 'Onbekende opstelling',
       'error.slotsRequired': 'Een opstelling heeft minstens één positie nodig',
       'error.slotsTooMany': 'Een opstelling kan niet meer dan 11 posities hebben',
-      'error.badJson': 'De inhoud is geen geldige JSON',
-      'error.tooLarge': 'Verzoek te groot',
       'error.methodNotAllowed': 'Methode niet toegestaan',
-      'error.forbidden': 'Geen toegang',
-      'error.server': 'Interne serverfout',
+      'error.storageFull': 'De opslag van de browser is vol — verwijder een speelplan om ruimte te maken',
     },
   };
 

@@ -1,15 +1,14 @@
 {
   "name": "soccer-field-manager",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Web-based soccer field management: squad, staff, formations and a drag-and-drop tactics board backed by SQLite.",
-  "main": "server.js",
+  "description": "Static web app for squad, staff, formations and a drag-and-drop tactics board, stored in the browser's localStorage.",
   "scripts": {
-    "start": "node server.js",
+    "start": "node scripts/serve.js",
     "check:i18n": "node scripts/check-i18n.js",
-    "test": "node scripts/check-i18n.js"
+    "test": "node scripts/test-store.js && node scripts/check-i18n.js"
   },
   "engines": {
-    "node": ">=22.5.0"
+    "node": ">=18"
   }
 }
