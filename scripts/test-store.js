@@ -443,6 +443,75 @@ test('rows without a usable id, and duplicate ids, are dropped', async () => {
   assert.strictEqual(players[0].name, 'Keeper');
 });
 
+test('a formation that kept its row but lost its slots is put back together', async () => {
+  // A backup's counts cover players, staff, formations and strategies, so one
+  // whose formation_slots went missing still looks healthy on the way in. The
+  // formations then have nowhere to put a player: every lineup reads as empty.
+  Store.reset();
+  const before = await api('GET', '/api/formations');
+  const stripped = await api('GET', '/api/backup');
+  stripped.data.formation_slots = [];
+
+  await api('PUT', '/api/backup', stripped);
+
+  const after = await api('GET', '/api/formations');
+  assert.strictEqual(after.length, 7, 'the formations themselves were never lost');
+  for (const f of after) {
+    assert.ok(f.slots.length > 0, `${f.name} got its slots back`);
+    assert.ok(
+      f.slots.every((s) => s.kickoff_x !== null && s.kickoff_y !== null),
+      `${f.name}'s rebuilt slots have kick-off spots too`);
+  }
+  assert.deepStrictEqual(
+    after.map((f) => f.slots.length), before.map((f) => f.slots.length),
+    'each formation is back to the shape it had');
+});
+
+test('a restore keeps dragged spots, including on slots with nobody in them', async () => {
+  Store.reset();
+  const formation = (await api('GET', '/api/formations'))[0];
+  const player = await api('POST', '/api/players', { name: 'Placed Paula' });
+  const [taken, moved, untouched] = formation.slots;
+
+  const strategy = await api('POST', '/api/strategies', {
+    name: 'Spots', formation_id: formation.id,
+    assignments: [
+      { slot_id: taken.id, player_id: player.id, x: 30, y: 80, kickoff_x: 40, kickoff_y: 90 },
+      // An empty slot dragged somewhere is a deliberate part of the shape.
+      { slot_id: moved.id, player_id: null, x: 12, y: 44 },
+      { slot_id: untouched.id, player_id: null },
+    ],
+  });
+
+  const backup = await api('GET', '/api/backup');
+  // The damaged shape above must not cost the spots either.
+  const stripped = JSON.parse(JSON.stringify(backup));
+  stripped.data.formation_slots = [];
+
+  for (const [label, payload] of [['clean', backup], ['slotless', stripped]]) {
+    Store.reset();
+    await api('PUT', '/api/backup', payload);
+    const detail = await api('GET', `/api/strategies/${strategy.id}`);
+    const live = new Set(
+      (await api('GET', '/api/formations'))
+        .find((f) => f.id === detail.formation_id).slots.map((s) => s.id));
+    const bySlot = new Map(
+      detail.assignments.filter((a) => live.has(a.slot_id)).map((a) => [a.slot_id, a]));
+
+    const placed = bySlot.get(taken.id);
+    assert.ok(placed, `${label}: the occupied slot still resolves to a live slot`);
+    assert.strictEqual(placed.player_id, player.id, `${label}: the player kept the slot`);
+    assert.deepStrictEqual(
+      [placed.x, placed.y, placed.kickoff_x, placed.kickoff_y], [30, 80, 40, 90],
+      `${label}: both phases of the dragged spot survived`);
+
+    const empty = bySlot.get(moved.id);
+    assert.ok(empty, `${label}: the moved empty slot survived`);
+    assert.strictEqual(empty.player_id, null, `${label}: and is still empty`);
+    assert.deepStrictEqual([empty.x, empty.y], [12, 44], `${label}: at the spot it was moved to`);
+  }
+});
+
 test('a file from somewhere else is refused rather than half-imported', async () => {
   const before = await api('GET', '/api/players');
   await fails('backupWrongFormat', () => api('PUT', '/api/backup', { format: 'something-else' }));

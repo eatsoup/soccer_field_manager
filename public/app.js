@@ -1280,7 +1280,16 @@ $('#strategy-list').addEventListener('click', guard(async (e) => {
 async function openStrategy(id) {
   clearTimeout(state.saveTimer);
   const s = await api('GET', `/api/strategies/${id}`);
-  const formation = state.formations.find((f) => f.id === s.formation_id) || state.formations[0];
+  /*
+   * Only a strategy that genuinely has no formation falls back to the first
+   * one. Standing in for a formation that should exist but does not looks
+   * harmless and is not: none of the substitute's slot ids match, so every
+   * assignment below is dropped, the board comes up empty, and the next edit
+   * autosaves that empty lineup over the real one. Showing the strategy
+   * without a formation is recoverable; quietly overwriting it is not.
+   */
+  const formation = state.formations.find((f) => f.id === s.formation_id)
+    || (s.formation_id == null ? state.formations[0] : null);
 
   const assignments = new Map();
   for (const slot of formation?.slots ?? []) assignments.set(slot.id, { player_id: null, x: null, y: null, kickoff_x: null, kickoff_y: null });
@@ -1295,7 +1304,9 @@ async function openStrategy(id) {
     id: s.id,
     name: s.name,
     description: s.description ?? '',
-    formation_id: formation?.id ?? null,
+    // Keep the strategy's own formation even when it is missing, so a save
+    // cannot quietly rewrite the link as "no formation".
+    formation_id: formation ? formation.id : s.formation_id,
     takes_kickoff: s.takes_kickoff !== false,
     assignments,
     drawings: s.drawings.map((d) => ({ ...d, phase: d.phase || 'open' })),

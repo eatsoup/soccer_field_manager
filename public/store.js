@@ -293,33 +293,57 @@
    * Puts the built-in formations in an empty document and derives a kick-off
    * spot for any slot missing one. Returns true when it changed anything.
    */
+  /** Lays a built-in's slots down under a formation that has none. */
+  function insertDefaultSlots(db, formationId, template) {
+    template.slots.forEach(([code, label, role_group, x, y], i) => {
+      db.formation_slots.push({
+        id: nextId(db, 'formation_slots'),
+        formation_id: formationId,
+        code,
+        label,
+        role_group,
+        x,
+        y,
+        kickoff_x: null,
+        kickoff_y: null,
+        sort_order: i,
+      });
+    });
+  }
+
   function seed(db) {
     let changed = false;
 
     if (db.formations.length === 0) {
-      for (const formation of DEFAULT_FORMATIONS) {
+      for (const template of DEFAULT_FORMATIONS) {
         const id = nextId(db, 'formations');
         db.formations.push({
           id,
-          name: formation.name,
-          description: formation.description,
+          name: template.name,
+          description: template.description,
           is_default: 1,
         });
-        formation.slots.forEach(([code, label, role_group, x, y], i) => {
-          db.formation_slots.push({
-            id: nextId(db, 'formation_slots'),
-            formation_id: id,
-            code,
-            label,
-            role_group,
-            x,
-            y,
-            kickoff_x: null,
-            kickoff_y: null,
-            sort_order: i,
-          });
-        });
+        insertDefaultSlots(db, id, template);
       }
+      changed = true;
+    }
+
+    /*
+     * A formation with no slots cannot hold a lineup: the board has nowhere to
+     * put a player, so every one of them sits on the bench and the strategy
+     * looks empty. The check above only rebuilds the built-ins when the whole
+     * table is gone, which leaves the worse case — formations present, slots
+     * missing — broken for good. That is reachable through a restore, since a
+     * backup's `formation_slots` is not covered by the counts the app shows
+     * before overwriting anything. Put the built-ins' slots back by name;
+     * a custom formation's are not ours to invent.
+     */
+    const templates = new Map(DEFAULT_FORMATIONS.map((f) => [f.name, f]));
+    for (const formation of db.formations) {
+      if (slotsFor(db, formation.id).length) continue;
+      const template = templates.get(formation.name);
+      if (!template) continue;
+      insertDefaultSlots(db, formation.id, template);
       changed = true;
     }
 
