@@ -111,6 +111,7 @@ function showView(name) {
   $$('.tab').forEach((tab) => tab.classList.toggle('is-active', tab.dataset.view === name));
   $$('.view').forEach((v) => v.classList.toggle('is-active', v.dataset.view === name));
   if (location.hash.slice(1) !== name) history.replaceState(null, '', `#${name}`);
+  if (name === 'data') refreshBackupCounts();
 }
 
 $('#tabs').addEventListener('click', (e) => {
@@ -143,6 +144,9 @@ function applyLocaleToUi() {
   renderFormations();
   renderStrategyList();
   renderBoard();
+  renderDriveState();
+  renderDriveFiles();
+  refreshBackupCounts();
 }
 
 /** Form headings depend on whether we are editing, so data-i18n cannot own them. */
@@ -1311,7 +1315,210 @@ async function loadStrategies() {
   renderStrategyList();
 }
 
+/* ============================================================== backup */
+
+/*
+ * The Backup tab. Everything this app knows lives in one browser's
+ * localStorage, so it is one cleared site setting away from gone — this is how
+ * you get a copy out, and how you get one back in. `GET /api/backup` hands
+ * over the whole document; `PUT /api/backup` replaces it.
+ *
+ * Google Drive is the same backup taking a different route out of the browser;
+ * drive.js owns the OAuth and the REST calls, this only drives the UI.
+ */
+
+function backupFilename() {
+  const pad = (n) => String(n).padStart(2, '0');
+  const d = new Date();
+  return `soccer-field-manager-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    + `-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
+}
+
+const countLines = (counts) => [
+  ['data.countPlayers', counts.players],
+  ['data.countStaff', counts.staff],
+  ['data.countFormations', counts.formations],
+  ['data.countStrategies', counts.strategies],
+];
+
+const refreshBackupCounts = guard(async () => {
+  const { counts } = await api('GET', '/api/backup');
+  $('#backup-counts').innerHTML = countLines(counts)
+    .map(([key, n]) => `<li><span>${esc(t(key))}</span><b>${n}</b></li>`).join('');
+});
+
+/** Hands the browser a file to save. */
+function downloadJson(filename, payload) {
+  const url = URL.createObjectURL(
+    new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  // Revoking immediately can beat the download in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/**
+ * Replaces everything with the contents of `payload`, after asking. `source`
+ * names where it came from so the confirmation is not a blank cheque.
+ */
+async function restoreBackup(payload, source) {
+  const counts = payload?.counts;
+  const summary = counts && typeof counts === 'object'
+    ? countLines(counts).map(([key, n]) => `${n} ${t(key).toLowerCase()}`).join(', ')
+    : t('data.summaryUnknown');
+  if (!confirm(t('confirm.restore', { source, summary }))) return false;
+
+  // A queued autosave would otherwise write the pre-restore strategy back.
+  clearTimeout(state.saveTimer);
+  const result = await api('PUT', '/api/backup', payload);
+  await loadAll();
+  refreshBackupCounts();
+  toast(t('toast.restored', result.counts));
+  return true;
+}
+
+/* -------------------------------------------------------------- drive */
+
+/** Turns a drive.js failure into the same translated message store errors get. */
+function driveMessage(err) {
+  return err?.code && hasKey(`error.${err.code}`)
+    ? t(`error.${err.code}`, err.params)
+    : (err?.message || t('error.driveRequestFailed'));
+}
+
+const onDrive = (fn) => (...args) =>
+  Promise.resolve(fn(...args)).catch((err) => toast(driveMessage(err), true));
+
+let driveFiles = [];
+
+function renderDriveState() {
+  const connected = Drive.isConnected();
+  const configured = Boolean(Drive.getClientId());
+
+  $('#drive-state').textContent = t(connected ? 'data.connected' : 'data.disconnected');
+  $('#drive-connect').hidden = connected;
+  $('#drive-disconnect').hidden = !connected;
+  $('#drive-upload').disabled = !connected;
+  $('#drive-refresh').disabled = !connected;
+  $('#drive-connect').disabled = !configured;
+  $('#drive-hint').textContent = configured
+    ? t('data.driveFolder', { folder: Drive.FOLDER_NAME })
+    : t('data.driveNeedsClientId');
+
+  if (!connected) driveFiles = [];
+  renderDriveFiles();
+}
+
+function renderDriveFiles() {
+  const list = $('#drive-files');
+  if (!Drive.isConnected()) {
+    list.innerHTML = '';
+    return;
+  }
+  if (!driveFiles.length) {
+    list.innerHTML = `<li class="hint">${esc(t('data.driveEmpty'))}</li>`;
+    return;
+  }
+  list.innerHTML = driveFiles.map((f, i) => `
+    <li class="drive-file">
+      <span class="title">
+        ${esc(f.name)}
+        <span class="sub">${esc(new Date(f.modifiedTime).toLocaleString(getLocale()))}</span>
+      </span>
+      <button class="btn btn-sm" data-drive-restore="${i}">${esc(t('data.driveRestore'))}</button>
+      <button class="btn btn-sm btn-danger" data-drive-delete="${i}"
+              title="${esc(t('data.driveDelete'))}">×</button>
+    </li>`).join('');
+}
+
+const refreshDriveFiles = onDrive(async () => {
+  driveFiles = await Drive.list();
+  renderDriveFiles();
+});
+
+function initBackupView() {
+  $('#backup-export').addEventListener('click', guard(async () => {
+    downloadJson(backupFilename(), await api('GET', '/api/backup'));
+    toast(t('toast.exported'));
+  }));
+
+  $('#backup-import').addEventListener('click', () => $('#backup-file').click());
+
+  $('#backup-file').addEventListener('change', guard(async (event) => {
+    const file = event.target.files[0];
+    event.target.value = ''; // so picking the same file twice still fires
+    if (!file) return;
+    let payload;
+    try {
+      payload = JSON.parse(await file.text());
+    } catch {
+      throw new Error(t('error.backupUnreadable'));
+    }
+    await restoreBackup(payload, file.name);
+  }));
+
+  const clientIdField = $('#drive-client-id');
+  clientIdField.value = Drive.getClientId();
+  clientIdField.addEventListener('change', () => {
+    clientIdField.value = Drive.setClientId(clientIdField.value);
+    renderDriveState();
+  });
+  // An id already configured means the setup details can stay folded away.
+  $('#drive-setup').open = !Drive.getClientId();
+
+  $('#drive-connect').addEventListener('click', onDrive(async () => {
+    await Drive.connect();
+    renderDriveState();
+    toast(t('toast.driveConnected'));
+    // Listing is a separate call; its own failure toast should win, not this one.
+    await refreshDriveFiles();
+  }));
+
+  $('#drive-disconnect').addEventListener('click', () => {
+    Drive.disconnect();
+    renderDriveState();
+  });
+
+  $('#drive-upload').addEventListener('click', onDrive(async () => {
+    const payload = await api('GET', '/api/backup');
+    await Drive.upload(backupFilename(), payload);
+    await refreshDriveFiles();
+    toast(t('toast.driveSaved', { folder: Drive.FOLDER_NAME }));
+  }));
+
+  $('#drive-refresh').addEventListener('click', () => refreshDriveFiles());
+
+  $('#drive-files').addEventListener('click', onDrive(async (event) => {
+    const restore = event.target.closest('[data-drive-restore]');
+    if (restore) {
+      const file = driveFiles[Number(restore.dataset.driveRestore)];
+      await restoreBackup(await Drive.download(file.id), file.name);
+      return;
+    }
+    const del = event.target.closest('[data-drive-delete]');
+    if (del) {
+      const file = driveFiles[Number(del.dataset.driveDelete)];
+      if (!confirm(t('confirm.driveDelete', { name: file.name }))) return;
+      await Drive.remove(file.id);
+      await refreshDriveFiles();
+      toast(t('toast.driveDeleted'));
+    }
+  }));
+
+  renderDriveState();
+}
+
 /* ================================================================ boot */
+
+/** Reads the whole document into the UI. Also used after a restore. */
+async function loadAll() {
+  await loadFormations();
+  await Promise.all([loadPlayers(), loadStaff(), loadStrategies()]);
+  if (state.strategies.length) await openStrategy(state.strategies[0].id);
+  else newStrategy();
+}
 
 (async function init() {
   setLocale(preferredLocale());
@@ -1327,11 +1534,9 @@ async function loadStrategies() {
   // Private-mode browsers can refuse localStorage; the app still runs, but
   // whatever you do is gone when the tab closes, so say so.
   if (!Store.persistent) toast(t('toast.storageUnavailable'), true);
+  initBackupView();
   try {
-    await loadFormations();
-    await Promise.all([loadPlayers(), loadStaff(), loadStrategies()]);
-    if (state.strategies.length) await openStrategy(state.strategies[0].id);
-    else newStrategy();
+    await loadAll();
   } catch (err) {
     toast(err.message, true);
   }

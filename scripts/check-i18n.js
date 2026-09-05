@@ -5,6 +5,7 @@
  *   1. every locale defines exactly the same keys
  *   2. every key referenced in markup or code actually exists
  *   3. no placeholder like {name} is dropped in a translation
+ *   4. every failure code store.js or drive.js can raise is translatable
  * Run with: node scripts/check-i18n.js
  */
 
@@ -62,7 +63,22 @@ for (const rel of sources) {
   }
 }
 
-// 4. every dynamic family used by the app has entries
+// 4. every failure code the store or Drive can raise has a translation, since
+//    the browser renders `error.<code>` and would otherwise print the key
+const CODE_SOURCES = {
+  'public/store.js': /StoreError\(\d+,\s*'([a-zA-Z0-9_]+)'/g,
+  'public/drive.js': /DriveError\(\s*'([a-zA-Z0-9_]+)'/g,
+};
+for (const [rel, pattern] of Object.entries(CODE_SOURCES)) {
+  const text = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+  for (const m of text.matchAll(pattern)) {
+    if (!known.has(`error.${m[1]}`)) {
+      problems.push(`[${rel}] raises code "${m[1]}" with no error.${m[1]} translation`);
+    }
+  }
+}
+
+// 5. every dynamic family used by the app has entries
 const REQUIRED_FAMILIES = {
   'foot.': ['foot.left', 'foot.right', 'foot.both'],
   'drawing.': ['drawing.run', 'drawing.pass', 'drawing.dribble', 'drawing.line', 'drawing.zone', 'drawing.text'],

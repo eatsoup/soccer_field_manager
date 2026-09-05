@@ -15,6 +15,7 @@
       <button class="tab" data-view="squad" data-i18n="nav.squad">Squad</button>
       <button class="tab" data-view="staff" data-i18n="nav.staff">Staff</button>
       <button class="tab" data-view="formations" data-i18n="nav.formations">Formations</button>
+      <button class="tab" data-view="data" data-i18n="nav.data">Backup</button>
     </nav>
     <label class="lang">
       <span class="sr-only" data-i18n="lang.label">Language</span>
@@ -296,14 +297,59 @@
         </div>
       </div>
     </section>
+    <!-- ============================================================= DATA -->
+    <section class="view" data-view="data">
+      <div class="crud">
+        <div class="card">
+          <h2 data-i18n="data.fileTitle">Backup file</h2>
+          <p class="hint" data-i18n="data.fileHint"></p>
+          <ul class="data-counts" id="backup-counts"></ul>
+          <div class="row">
+            <button class="btn btn-primary" id="backup-export" data-i18n="data.export">Download backup</button>
+            <button class="btn" id="backup-import" data-i18n="data.import">Restore from file…</button>
+          </div>
+          <input type="file" id="backup-file" accept="application/json,.json" hidden />
+        </div>
+
+        <div class="card">
+          <div class="panel-head">
+            <h2 data-i18n="data.driveTitle">Google Drive</h2>
+            <span class="count" id="drive-state"></span>
+          </div>
+          <p class="hint" data-i18n="data.driveHint"></p>
+
+          <details class="data-setup" id="drive-setup">
+            <summary data-i18n="data.driveSetup">Connection settings</summary>
+            <label class="field">
+              <span data-i18n="data.clientId">OAuth client ID</span>
+              <input id="drive-client-id" spellcheck="false" autocomplete="off"
+                     data-i18n-placeholder="data.clientIdPlaceholder" />
+            </label>
+            <p class="hint" data-i18n="data.clientIdHint"></p>
+          </details>
+
+          <div class="row">
+            <button class="btn btn-primary" id="drive-connect" data-i18n="data.connect">Connect</button>
+            <button class="btn" id="drive-upload" data-i18n="data.driveSave">Save to Drive</button>
+            <button class="btn" id="drive-refresh" data-i18n="data.driveRefresh">Refresh</button>
+            <button class="btn" id="drive-disconnect" data-i18n="data.disconnect">Disconnect</button>
+          </div>
+
+          <p class="hint scope" id="drive-hint"></p>
+          <ul class="list" id="drive-files"></ul>
+        </div>
+      </div>
+    </section>
   </main>
 
   <div class="toast" id="toast" hidden></div>
   <div class="drag-ghost" id="drag-ghost" hidden></div>
 
+  <script src="config.js"></script>
   <script src="i18n.js"></script>
   <script src="kickoff.js"></script>
   <script src="store.js"></script>
+  <script src="drive.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
