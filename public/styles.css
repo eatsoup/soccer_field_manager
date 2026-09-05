@@ -443,3 +443,31 @@ textarea { resize: vertical; }
 }
 
 .scope { font-size: 11px; margin: -4px 0 8px; opacity: .8; }
+
+/* ------------------------------------------------------------ backup tab */
+
+.data-counts { list-style: none; margin: 0 0 12px; padding: 0; }
+.data-counts li {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+.data-counts span { color: var(--muted); }
+
+.data-setup { margin: 0 0 12px; }
+.data-setup summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px 0;
+}
+.data-setup[open] summary { margin-bottom: 8px; }
+.data-setup input { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+
+#drive-files { margin-top: 10px; }
+.drive-file { cursor: default; align-items: center; }
+.drive-file .title { line-height: 1.3; white-space: normal; }
+.drive-file .sub { display: block; }
+
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn:disabled:hover { border-color: var(--line); }

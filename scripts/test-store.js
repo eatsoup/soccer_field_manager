@@ -347,6 +347,112 @@ test('reset wipes the document and the built-ins come back', async () => {
   assert.strictEqual((await api('GET', '/api/formations')).length, 7);
 });
 
+/* --------------------------------------------------------------- backup */
+
+test('a backup carries the whole document plus a format stamp and counts', async () => {
+  await api('POST', '/api/players', { name: 'Backup Bob', shirt_number: 8 });
+  await api('POST', '/api/staff', { name: 'Backup Bea', role: 'physio' });
+
+  const backup = await api('GET', '/api/backup');
+  assert.strictEqual(backup.format, Store.BACKUP_FORMAT);
+  assert.strictEqual(backup.backup_version, Store.BACKUP_VERSION);
+  assert.ok(Date.parse(backup.exported_at), 'exported_at is a timestamp');
+  assert.deepStrictEqual(backup.counts,
+    { players: 1, staff: 1, formations: 7, strategies: 0 });
+  for (const table of ['players', 'staff', 'formations', 'formation_slots',
+    'strategies', 'strategy_assignments', 'strategy_drawings']) {
+    assert.ok(Array.isArray(backup.data[table]), `${table} is in the backup`);
+  }
+  assert.strictEqual(backup.data.players[0].name, 'Backup Bob');
+});
+
+test('a backup round-trips through a wiped document', async () => {
+  const formation = (await api('GET', '/api/formations'))[0];
+  const strategy = await api('POST', '/api/strategies', {
+    name: 'Round trip',
+    formation_id: formation.id,
+    assignments: [{ slot_id: formation.slots[0].id, player_id: null, x: 50, y: 90 }],
+    drawings: [{ kind: 'run', points: [{ x: 10, y: 10 }, { x: 20, y: 20 }], phase: 'open' }],
+  });
+  const backup = await api('GET', '/api/backup');
+
+  Store.reset();
+  assert.strictEqual((await api('GET', '/api/players')).length, 0, 'wiped first');
+
+  const result = await api('PUT', '/api/backup', backup);
+  assert.strictEqual(result.imported, true);
+  assert.deepStrictEqual(result.counts,
+    { players: 1, staff: 1, formations: 7, strategies: 1 });
+
+  assert.strictEqual((await api('GET', '/api/players'))[0].name, 'Backup Bob');
+  assert.strictEqual((await api('GET', '/api/staff'))[0].name, 'Backup Bea');
+  const restored = await api('GET', `/api/strategies/${strategy.id}`);
+  assert.strictEqual(restored.name, 'Round trip');
+  assert.strictEqual(restored.assignments.length, 1);
+  assert.strictEqual(restored.drawings.length, 1);
+  assert.strictEqual(restored.drawings[0].kind, 'run');
+});
+
+test('a restore replaces the document instead of merging into it', async () => {
+  const backup = await api('GET', '/api/backup');
+  await api('POST', '/api/players', { name: 'Added After The Backup' });
+  assert.strictEqual((await api('GET', '/api/players')).length, 2);
+
+  await api('PUT', '/api/backup', backup);
+  const players = await api('GET', '/api/players');
+  assert.strictEqual(players.length, 1);
+  assert.strictEqual(players[0].name, 'Backup Bob');
+});
+
+test('ids keep counting past the restored rows', async () => {
+  const highest = (await api('GET', '/api/players'))
+    .reduce((max, p) => Math.max(max, p.id), 0);
+  const added = await api('POST', '/api/players', { name: 'Next Up' });
+  assert.ok(added.id > highest, `${added.id} follows ${highest}`);
+});
+
+test('restoring an empty document brings the built-in formations back', async () => {
+  await api('PUT', '/api/backup', { format: Store.BACKUP_FORMAT, data: { players: [] } });
+  assert.strictEqual((await api('GET', '/api/players')).length, 0);
+  assert.strictEqual((await api('GET', '/api/formations')).length, 7);
+});
+
+test('a bare document without the envelope is accepted', async () => {
+  await api('PUT', '/api/backup', {
+    players: [{ id: 3, name: 'Bare', active: 1 }],
+    formations: [],
+  });
+  const players = await api('GET', '/api/players');
+  assert.strictEqual(players.length, 1);
+  assert.strictEqual(players[0].name, 'Bare');
+});
+
+test('rows without a usable id, and duplicate ids, are dropped', async () => {
+  await api('PUT', '/api/backup', {
+    data: {
+      players: [
+        { id: 1, name: 'Keeper', active: 1 },
+        { name: 'No id', active: 1 },
+        { id: 1, name: 'Duplicate id', active: 1 },
+        'not a row',
+      ],
+    },
+  });
+  const players = await api('GET', '/api/players');
+  assert.strictEqual(players.length, 1);
+  assert.strictEqual(players[0].name, 'Keeper');
+});
+
+test('a file from somewhere else is refused rather than half-imported', async () => {
+  const before = await api('GET', '/api/players');
+  await fails('backupWrongFormat', () => api('PUT', '/api/backup', { format: 'something-else' }));
+  await fails('backupTooNew', () =>
+    api('PUT', '/api/backup', { format: Store.BACKUP_FORMAT, backup_version: 99, data: {} }));
+  await fails('backupUnreadable', () => api('PUT', '/api/backup', { hello: 'world' }));
+  await fails('backupUnreadable', () => api('PUT', '/api/backup', null));
+  assert.deepStrictEqual(await api('GET', '/api/players'), before, 'nothing changed');
+});
+
 /* --------------------------------------------------------------- runner */
 
 (async function run() {

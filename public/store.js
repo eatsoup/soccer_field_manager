@@ -26,6 +26,11 @@
 
   const STORAGE_KEY = 'soccer.db.v1';
 
+  // Stamped into every backup so an unrelated .json file is rejected with a
+  // clear reason instead of half-importing.
+  const BACKUP_FORMAT = 'soccer-field-manager-backup';
+  const BACKUP_VERSION = 1;
+
   /* ---------------------------------------------------------- storage */
 
   /*
@@ -485,6 +490,82 @@
     }
   }
 
+  /* ------------------------------------------------------------ backup */
+
+  /**
+   * The whole document, wrapped in a self-describing envelope. `counts` is
+   * there so the app can say what a file holds before overwriting anything.
+   */
+  function exportBackup(db) {
+    const data = { version: db.version, seq: db.seq };
+    for (const table of TABLES) data[table] = db[table];
+    return {
+      format: BACKUP_FORMAT,
+      backup_version: BACKUP_VERSION,
+      exported_at: new Date().toISOString(),
+      counts: countsOf(data),
+      data,
+    };
+  }
+
+  const countsOf = (doc) => ({
+    players: doc.players.length,
+    staff: doc.staff.length,
+    formations: doc.formations.length,
+    strategies: doc.strategies.length,
+  });
+
+  const isRow = (row) => row !== null && typeof row === 'object' && !Array.isArray(row);
+
+  /**
+   * Replaces the document with the contents of a backup. This is a restore,
+   * not a merge: whatever is in the browser now is gone afterwards.
+   *
+   * Rows are taken as they come apart from a shape check — anything that is
+   * not an object with a numeric id is dropped — because they were written by
+   * the validating routes in the first place. Dangling references are already
+   * survivable: the app drops assignments pointing at a missing slot or player
+   * the next time it saves the strategy.
+   */
+  function importBackup(db, payload) {
+    if (!isRow(payload)) {
+      throw new StoreError(400, 'backupUnreadable', 'That file is not a backup');
+    }
+    if (payload.format !== undefined && payload.format !== BACKUP_FORMAT) {
+      throw new StoreError(400, 'backupWrongFormat', 'That file was written by a different app');
+    }
+    if (Number(payload.backup_version) > BACKUP_VERSION) {
+      throw new StoreError(400, 'backupTooNew', 'That backup comes from a newer version of this app');
+    }
+
+    // Accept the envelope or, for hand-edited files, a bare document.
+    const doc = isRow(payload.data) ? payload.data : payload;
+    if (!TABLES.some((table) => Array.isArray(doc[table]))) {
+      throw new StoreError(400, 'backupUnreadable', 'That file is not a backup');
+    }
+
+    db.version = 1;
+    db.seq = {};
+    for (const table of TABLES) {
+      const rows = Array.isArray(doc[table]) ? doc[table] : [];
+      const seen = new Set();
+      db[table] = [];
+      for (const row of rows) {
+        if (!isRow(row)) continue;
+        const id = num(row.id);
+        if (id === null || seen.has(id)) continue; // no row without a primary key, no duplicates
+        seen.add(id);
+        db[table].push({ ...row, id });
+      }
+      db.seq[table] = db[table].reduce((max, row) => Math.max(max, row.id), 0);
+    }
+
+    // An empty backup gets the built-in formations back, exactly like a fresh
+    // document; a slot that predates kick-off spots gets one derived.
+    seed(db);
+    return { imported: true, counts: countsOf(db) };
+  }
+
   /* ------------------------------------------------------------ routes */
 
   const routes = [
@@ -698,6 +779,10 @@
       remove(db.strategy_drawings, (d) => d.strategy_id === id);
       return { deleted: id };
     }],
+
+    ['GET', /^\/api\/backup$/, (db) => exportBackup(db)],
+
+    ['PUT', /^\/api\/backup$/, (db, m, body) => importBackup(db, body)],
   ];
 
   /* ----------------------------------------------------------- request */
@@ -737,6 +822,8 @@
     request,
     reset,
     STORAGE_KEY,
+    BACKUP_FORMAT,
+    BACKUP_VERSION,
     StoreError,
     persistent: backend.available,
     DEFAULT_FORMATIONS,
