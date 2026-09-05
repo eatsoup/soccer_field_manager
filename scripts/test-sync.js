@@ -58,16 +58,23 @@ function makeClock() {
 
 function makeDrive() {
   let seq = 0;
+  let rev = 0;
   const files = new Map();
   const notFound = () => Object.assign(new Error('not found'),
     { code: 'driveRequestFailed', params: { status: 404 } });
-  const bump = (f) => {
+  /*
+   * Modelled on the real thing: `version` counts every change Drive records,
+   * including bookkeeping nobody asked for — reading a file updates when it
+   * was last viewed, and that counts. Only a write mints a new revision id.
+   */
+  const bump = (f, newContent) => {
     f.version = String(++seq);
+    if (newContent) f.headRevisionId = `r${++rev}`;
     f.modifiedTime = new Date(1700000000000 + seq * 1000).toISOString();
     return f;
   };
   const meta = (f) => ({
-    id: f.id, name: f.name, version: f.version,
+    id: f.id, name: f.name, version: f.version, headRevisionId: f.headRevisionId,
     modifiedTime: f.modifiedTime, appProperties: f.appProperties,
   });
 
@@ -80,7 +87,7 @@ function makeDrive() {
         appProperties: role ? { sfmRole: role } : undefined,
         content: JSON.parse(JSON.stringify(payload)),
       };
-      files.set(f.id, bump(f));
+      files.set(f.id, bump(f, true));
       return meta(f);
     },
     async overwrite(id, payload) {
@@ -88,7 +95,7 @@ function makeDrive() {
       if (!f) throw notFound();
       drive.calls.overwrite++;
       f.content = JSON.parse(JSON.stringify(payload));
-      return meta(bump(f));
+      return meta(bump(f, true));
     },
     async meta(id) {
       const f = files.get(id);
@@ -100,6 +107,7 @@ function makeDrive() {
       const f = files.get(id);
       if (!f) throw notFound();
       drive.calls.download++;
+      bump(f, false);          // "last viewed" bookkeeping, as Drive does
       return JSON.parse(JSON.stringify(f.content));
     },
     async findCurrent() {
@@ -437,6 +445,87 @@ test('an expired token stops the loop instead of hammering Drive', async () => {
   const before = drive.calls.download;
   await clock.advance(120_000);
   assert.strictEqual(drive.calls.download, before, 'and stayed down');
+});
+
+test('one device reading the file does not look like an edit to another', async () => {
+  const drive = makeDrive();
+  const clock = makeClock();
+  const a = makeDevice('A', drive, clock);
+  const b = makeDevice('B', drive, clock);
+
+  await a.api('POST', '/api/players', { name: 'Alice' });
+  await a.sync.start();
+  await b.sync.start();
+  await settle();
+
+  a.conflictAnswer = 'THIS SHOULD NEVER BE ASKED';
+  b.conflictAnswer = 'THIS SHOULD NEVER BE ASKED';
+
+  // Reads only: Drive moves `version` on for its own bookkeeping every time.
+  const live = await drive.findCurrent();
+  await drive.download(live.id);
+  await drive.download(live.id);
+
+  await a.api('POST', '/api/players', { name: 'Bob' });
+  await clock.advance(2000);
+
+  assert.strictEqual(a.phase, 'synced', 'A pushed without being asked anything');
+  assert.deepStrictEqual(a.log, [], 'nothing was parked as a clash');
+
+  await clock.advance(13_000);
+  assert.deepStrictEqual((await players(b)).sort(), ['Alice', 'Bob']);
+  assert.deepStrictEqual(b.log, ['pulled'], 'B pulled once, for a real change');
+});
+
+test('an identical document under a new revision is adopted without a word', async () => {
+  const drive = makeDrive();
+  const clock = makeClock();
+  const a = makeDevice('A', drive, clock);
+  const b = makeDevice('B', drive, clock);
+
+  await a.api('POST', '/api/players', { name: 'Alice' });
+  await a.sync.start();
+  await b.sync.start();
+  await settle();
+  b.conflictAnswer = 'THIS SHOULD NEVER BE ASKED';
+
+  // A fresh revision carrying exactly what was already there.
+  const live = await drive.findCurrent();
+  await drive.overwrite(live.id, await drive.download(live.id));
+
+  await clock.advance(13_000);
+  assert.deepStrictEqual(b.log, [], 'no clash, and nothing to announce');
+  assert.strictEqual(b.phase, 'synced');
+  assert.deepStrictEqual(await players(b), ['Alice']);
+});
+
+test('a device with edits in hand is not asked about a change that is not one', async () => {
+  const drive = makeDrive();
+  const clock = makeClock();
+  const a = makeDevice('A', drive, clock);
+  const b = makeDevice('B', drive, clock);
+
+  await a.api('POST', '/api/players', { name: 'Alice' });
+  await a.sync.start();
+  await b.sync.start();
+  await settle();
+  b.conflictAnswer = 'THIS SHOULD NEVER BE ASKED';
+
+  // B has something to send, and meanwhile the file gains a revision that
+  // changes nothing. The old signal would have called that a clash.
+  b.sync.stop();
+  await b.api('POST', '/api/players', { name: 'FromB' });
+  const live = await drive.findCurrent();
+  await drive.overwrite(live.id, await drive.download(live.id));
+
+  await b.sync.start();
+  await settle();
+  await clock.advance(2000);
+
+  assert.deepStrictEqual(b.log, [], 'B was never asked');
+  assert.strictEqual(b.phase, 'synced');
+  const stored = await drive.download((await drive.findCurrent()).id);
+  assert.strictEqual(stored.counts.players, 2, 'and B’s edit went up');
 });
 
 test('the baseline survives a reload, so coming back is not a clash', async () => {

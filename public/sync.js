@@ -29,7 +29,8 @@
   let running = false;
 
   let fileId = null;
-  let baseVersion = null;       // the Drive version this device is in step with
+  let baseToken = null;         // the content revision this device is in step with
+  let baseDigest = null;        // and a stand-in for what that revision said
   let dirty = false;            // local edits Drive has not seen yet
   let editSerial = 0;           // so an edit mid-upload is not marked as saved
 
@@ -54,7 +55,7 @@
   function remember() {
     try {
       root.localStorage.setItem(STATE_KEY,
-        JSON.stringify({ fileId, version: baseVersion, dirty }));
+        JSON.stringify({ fileId, token: baseToken, digest: baseDigest, dirty }));
     } catch {
       // Sync still works; it just re-establishes the baseline on the next boot.
     }
@@ -69,7 +70,10 @@
     }
     if (!saved || typeof saved !== 'object') return;
     fileId = saved.fileId || null;
-    baseVersion = saved.version ?? null;
+    // `version` is what older builds stored. A baseline in the old currency
+    // simply looks unfamiliar, which costs one content check and nothing else.
+    baseToken = saved.token ?? saved.version ?? null;
+    baseDigest = saved.digest ?? null;
     dirty = Boolean(saved.dirty);
   }
 
@@ -94,8 +98,51 @@
 
   /* --------------------------------------------------------- plumbing */
 
-  // Drive hands `version` back as a string; a missing one can never match.
-  const sameVersion = (a, b) => a != null && b != null && String(a) === String(b);
+  // Drive hands these back as strings; a missing one can never match.
+  const sameToken = (a, b) => a != null && b != null && String(a) === String(b);
+
+  // Content revision first. `version` only stands in for a file that has not
+  // got one yet — it also climbs for changes nobody made, so it is a hint here
+  // rather than the answer.
+  const tokenOf = (meta) => meta?.headRevisionId ?? meta?.version ?? null;
+
+  /*
+   * A short, stable stand-in for a document's contents. Kept instead of the
+   * fingerprint itself, which is the entire squad and has no business sitting
+   * in localStorage. Two 32-bit passes and the length: not cryptography, but
+   * far past the point where a collision between two versions of one squad is
+   * worth reasoning about.
+   */
+  function digest(text) {
+    let h1 = 0x811c9dc5;
+    let h2 = 0x01000193;
+    for (let i = 0; i < text.length; i++) {
+      const c = text.charCodeAt(i);
+      h1 = Math.imul(h1 ^ c, 0x01000193);
+      h2 = Math.imul(h2 + c, 0x85ebca6b) ^ (h2 >>> 13);
+    }
+    return `${text.length}-${(h1 >>> 0).toString(36)}-${(h2 >>> 0).toString(36)}`;
+  }
+
+  /** Records the revision, and what it said, as this device's new baseline. */
+  function agree(token, print) {
+    baseToken = token;
+    baseDigest = digest(print);
+    dirty = false;
+    remember();
+  }
+
+  /*
+   * What a document actually says, ignoring the envelope around it. Two
+   * exports of the same squad differ in `exported_at` alone, and `seq` counts
+   * ids handed out rather than anything on the pitch, so neither belongs in an
+   * answer to "did this really change?".
+   */
+  function fingerprint(payload) {
+    const doc = payload?.data ?? payload ?? {};
+    const tables = Object.keys(doc).filter((key) => Array.isArray(doc[key])).sort();
+    return JSON.stringify(tables.map((key) => [key, doc[key]]));
+  }
 
   /** Runs Drive work one piece at a time, so a push cannot race a pull. */
   function serialise(work) {
@@ -128,7 +175,8 @@
     } catch (err) {
       if (err?.params?.status !== 404) throw err;
       fileId = null;
-      baseVersion = null;
+      baseToken = null;
+      baseDigest = null;
       remember();
       await ensureFile();
       return Drive.meta(fileId);
@@ -146,21 +194,63 @@
     if (fileId) return;
     const found = await Drive.findCurrent();
     if (!found) {
-      const created = await Drive.createCurrent(await cfg.read());
+      const mine = await cfg.read();
+      const created = await Drive.createCurrent(mine);
       fileId = created.id;
-      baseVersion = created.version;
-      dirty = false;
-      remember();
+      agree(tokenOf(created), fingerprint(mine));
       return;
     }
 
     fileId = found.id;
     if (await cfg.isEmpty()) {
-      await applyRemote(await Drive.download(found.id), found.version,
+      await applyRemote(await Drive.download(found.id), tokenOf(found),
         { hold: false, announce: false });
       return;
     }
-    await settleClash(found.version);
+    // Work on both sides and no baseline to judge by. If the contents happen
+    // to agree there is nothing to settle; if they differ, this device cannot
+    // know which is newer, so it asks rather than guesses.
+    await reconcile(found, { unsureLocal: true });
+  }
+
+  /**
+   * The file carries a revision this device has not seen. That is not yet the
+   * same as somebody having changed something: Drive issues revisions for its
+   * own reasons, and two devices can perfectly well write identical documents.
+   * So the contents get the last word before anyone is asked anything.
+   */
+  async function reconcile(remote, { unsureLocal = false } = {}) {
+    const theirs = await Drive.download(fileId);
+    const theirPrint = fingerprint(theirs);
+    const token = tokenOf(remote);
+
+    /*
+     * Measured against what we last agreed on, not against what is on screen
+     * now — those are different questions, and only the first one answers
+     * "did somebody else change something?". A device holding an edit of its
+     * own would otherwise read its own unsent work as a disagreement.
+     */
+    if (!unsureLocal && baseDigest && digest(theirPrint) === baseDigest) {
+      baseToken = token;               // Drive moved, the squad did not
+      remember();
+      if (!dirty) report('synced');
+      return true;                     // safe for a caller mid-push to carry on
+    }
+
+    // Or it changed into precisely what this device already holds.
+    if (theirPrint === fingerprint(await cfg.read())) {
+      agree(token, theirPrint);
+      report('synced');
+      return false;
+    }
+
+    if (dirty || unsureLocal) {
+      await settleClash(theirs, token);
+      return false;
+    }
+    report('syncing');
+    await applyRemote(theirs, token);
+    return false;
   }
 
   /**
@@ -168,9 +258,9 @@
    * a token or has unsaved edits in hand — the board changing under someone's
    * fingers is the one thing worse than a slightly stale board.
    */
-  async function applyRemote(doc, version, { hold = true, announce = true } = {}) {
+  async function applyRemote(doc, token, { hold = true, announce = true } = {}) {
     if (hold && cfg.isBusy()) {
-      held = { doc, version };
+      held = { doc, token };
       report('waiting');
       scheduleIdleCheck();
       return;
@@ -182,9 +272,7 @@
     } finally {
       applying = false;
     }
-    baseVersion = version;
-    dirty = false;
-    remember();
+    agree(token, fingerprint(doc));
     report('synced');
     if (announce) cfg.onPulled?.();
   }
@@ -194,8 +282,8 @@
     idleTimer = setTimeout(() => {
       if (!running || !held) return;
       if (cfg.isBusy()) { scheduleIdleCheck(); return; }
-      const { doc, version } = held;
-      serialise(() => guarded(() => applyRemote(doc, version)));
+      const { doc, token } = held;
+      serialise(() => guarded(() => applyRemote(doc, token)));
     }, IDLE_RECHECK);
   }
 
@@ -204,21 +292,18 @@
    * user does not keep is written to Drive as a named copy first, so a wrong
    * button is never the end of anyone's afternoon.
    */
-  async function settleClash(remoteVersion) {
+  async function settleClash(theirs, remoteToken) {
     report('conflict');
-    const theirs = await Drive.download(fileId);
     const mine = await cfg.read();
 
     if (await cfg.onConflict() === 'remote') {
       await cfg.snapshot(mine, 'local');
-      await applyRemote(theirs, remoteVersion, { hold: false });
+      await applyRemote(theirs, remoteToken, { hold: false });
       return;
     }
     await cfg.snapshot(theirs, 'remote');
     const saved = await Drive.overwrite(fileId, mine);
-    baseVersion = saved.version;
-    dirty = false;
-    remember();
+    agree(tokenOf(saved), fingerprint(mine));
     report('synced');
   }
 
@@ -229,16 +314,16 @@
 
     report('syncing');
     const remote = await remoteMeta();
-    if (!sameVersion(remote.version, baseVersion)) {
-      await settleClash(remote.version);
-      return;
-    }
+    // A revision we have not seen only stops the push if it really differs.
+    if (!sameToken(tokenOf(remote), baseToken) && !await reconcile(remote)) return;
 
     // Marked before the upload: an edit landing while it is in flight leaves
     // this document stale the moment it arrives, and must not read as saved.
     const mark = editSerial;
-    const saved = await Drive.overwrite(fileId, await cfg.read());
-    baseVersion = saved.version;
+    const mine = await cfg.read();
+    const saved = await Drive.overwrite(fileId, mine);
+    baseToken = tokenOf(saved);
+    baseDigest = digest(fingerprint(mine));
     if (editSerial === mark) {
       dirty = false;
       report('synced');
@@ -254,16 +339,11 @@
     if (!fileId) return;
 
     const remote = await remoteMeta();
-    if (sameVersion(remote.version, baseVersion)) {
+    if (sameToken(tokenOf(remote), baseToken)) {
       if (!dirty && phase !== 'waiting') report('synced');
       return;
     }
-    if (dirty) {
-      await settleClash(remote.version);
-      return;
-    }
-    report('syncing');
-    await applyRemote(await Drive.download(fileId), remote.version);
+    await reconcile(remote);
   }
 
   /* ------------------------------------------------------------ timers */
@@ -330,7 +410,8 @@
   function forget() {
     stop();
     fileId = null;
-    baseVersion = null;
+    baseToken = null;
+    baseDigest = null;
     dirty = false;
     try {
       root.localStorage.removeItem(STATE_KEY);

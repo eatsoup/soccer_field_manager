@@ -264,9 +264,17 @@
     return folderId;
   }
 
-  // `version` climbs on every change Drive records, which is all the sync loop
-  // needs to tell "someone else wrote" from "still ours" without downloading.
-  const FIELDS = 'id,name,modifiedTime,version,appProperties';
+  /*
+   * `headRevisionId` changes when the file's *contents* get a new revision,
+   * which is the only kind of change the sync loop cares about. `version`
+   * looks similar and is not: Drive's own docs say it reflects every change
+   * recorded on the server "even those not visible to the user", so it climbs
+   * for bookkeeping — another device so much as opening the file — and reading
+   * it as "someone edited this" invents clashes that never happened.
+   * It stays in the field list only as a fallback for a file that has no
+   * revisions of its own yet.
+   */
+  const FIELDS = 'id,name,modifiedTime,version,headRevisionId,appProperties';
 
   /** The metadata + content body Drive wants when creating a file. */
   function multipartBody(metadata, payload) {
