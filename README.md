@@ -105,17 +105,34 @@ formations, strategies, drawings — to a single `.json` file; *Restore from
 file* reads one back. A restore is a replacement, not a merge: it asks first,
 and names what the file holds before it overwrites anything.
 
-The same backup can go to **Google Drive** instead: connect once, then *Save to
-Drive* and pick any earlier backup to restore. Whoever deploys the site sets
-that up once — see [Google Drive](#google-drive) — after which it is just a
-sign-in for everyone else.
+Connect **Google Drive** and you stop having to think about any of it: your
+work saves itself into a live file that follows you to every device signed in
+to the same account. Whoever deploys the site sets that up once — see
+[Google Drive](#google-drive) — after which it is just a sign-in for everyone
+else.
 
 ## Google Drive
 
-The Backup tab can put backups in a **Soccer Field Manager** folder in your own
-Drive and read them back, so a phone and a laptop can share a squad. For anyone
-using the site it is two clicks: *Connect*, sign in to their own Google
-account, *Save to Drive*. Nobody but you has to set anything up.
+Connect once and the app keeps a **Current.json** in a *Soccer Field Manager*
+folder in your own Drive. Every change you make is written there a moment
+later, and every device signed in to the same account picks it up — so a phone
+on the touchline and a laptop at home stay on the same squad without anyone
+pressing save. For anyone using the site it is one click: *Connect*, sign in,
+done. Nobody but you has to set anything up.
+
+Alongside it you can keep **named copies**: *Save a named copy…* asks for a
+name and writes that state aside, to restore later. Those are the ones you take
+on purpose — a shape for a particular opponent, a squad before transfers — and
+nothing overwrites them. Reusing a name asks before replacing that copy.
+
+Sync is deliberately the modest kind. There is no server to arbitrate, so each
+device tracks the Drive revision it last agreed with and Drive's own version
+counter says whether anyone else got there first. Only one side changed, and it
+just flows; both changed, and the app asks which to keep — and writes the other
+one to Drive as a named copy first, so answering it wrongly costs a click
+rather than an afternoon. An update from elsewhere waits while you are dragging
+a token or have an unsaved edit in hand, and lands the moment you pause. A tab
+you are not looking at stops polling.
 
 Getting there costs you one registration, once, at deploy time. This is the
 same arrangement draw.io has: diagrams.net ships JGraph's own client ID on
@@ -219,11 +236,13 @@ tooling that never ships.
 | `public/store.js` | The database: localStorage document, validation, built-in formation seed data |
 | `public/i18n.js` | Translation tables (English + Dutch) and the `t()` helper |
 | `public/drive.js` | Google Drive sign-in and REST calls, behind a `Drive` object |
+| `public/sync.js` | Keeps the local document and the Drive live file in step |
 | `public/config.js` | Optional deployment settings — currently just the Google client ID |
 | `public/kickoff.js` | Kick-off geometry and rule checks, shared by the store and the board |
 | `public/styles.css` | Styling |
 | `scripts/serve.js` | Static file server for local development |
 | `scripts/test-store.js` | Tests the store against the contract `app.js` relies on |
+| `scripts/test-sync.js` | Runs two devices against a stand-in Drive on a virtual clock |
 | `scripts/check-i18n.js` | Fails if a key is missing from a locale or referenced but undefined |
 
 The pitch uses a 0–100 coordinate space on both axes; the SVG is 100 × 154 so
@@ -284,7 +303,7 @@ leaves nothing half-applied, and reads go back to `localStorage` each time so a
 second tab sees the first one's work on its next action.
 
 ```bash
-node scripts/test-store.js    # or: npm test — also runs the i18n check
+node scripts/test-store.js    # or: npm test — also runs the sync and i18n checks
 ```
 
 Failures carry a stable `code` (`playerNotFound`, `builtinReadonly`,

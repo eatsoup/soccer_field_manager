@@ -65,7 +65,26 @@ const state = {
   tool: 'select',
   color: PALETTE[0],
   saveTimer: null,
+  dirty: false,        // edits made here that the store has not been told about
 };
+
+/*
+ * A document arriving from another device must not land mid-gesture. Counting
+ * pointers on the document in the capture phase catches every drag the board
+ * has without threading a flag through each handler.
+ */
+let pointersDown = 0;
+document.addEventListener('pointerdown', () => { pointersDown++; }, true);
+for (const type of ['pointerup', 'pointercancel']) {
+  document.addEventListener(type, () => { pointersDown = Math.max(0, pointersDown - 1); }, true);
+}
+
+/** True while swapping the document underneath would be rude, or lossy. */
+function isEditing() {
+  if (pointersDown > 0 || state.dirty) return true;
+  const el = document.activeElement;
+  return Boolean(el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'));
+}
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -82,7 +101,11 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
  */
 async function api(method, path, body) {
   try {
-    return await Store.request(method, path, body);
+    const result = await Store.request(method, path, body);
+    // One choke point for every write, which is exactly what the sync engine
+    // needs to hear about: it debounces the burst into a single upload.
+    if (method !== 'GET') Sync.touch();
+    return result;
   } catch (err) {
     const message = err.code && hasKey(`error.${err.code}`)
       ? t(`error.${err.code}`, err.params)
@@ -1098,6 +1121,7 @@ $('#reset-positions').addEventListener('click', () => {
 
 function markDirty() {
   $('#board-status').textContent = t('status.unsaved');
+  state.dirty = true;
   clearTimeout(state.saveTimer);
   if (state.strategy?.id) {
     state.saveTimer = setTimeout(() => saveStrategy(true), 900);
@@ -1120,6 +1144,7 @@ function newStrategy() {
   $('#strategy-notes').value = '';
   if (formation) $('#formation-select').value = String(formation.id);
   $('#board-status').textContent = t('status.newStrategy');
+  state.dirty = false;
   renderStrategyList();
   renderBoard();
 }
@@ -1184,6 +1209,7 @@ const saveStrategy = guard(async (silent = false) => {
     ? await api('PUT', `/api/strategies/${state.strategy.id}`, payload)
     : await api('POST', '/api/strategies', payload);
 
+  state.dirty = false;
   state.strategy.id = saved.id;
   state.strategy.name = saved.name;
   $('#strategy-name').value = saved.name;
@@ -1316,6 +1342,7 @@ async function openStrategy(id) {
   $('#strategy-notes').value = s.description ?? '';
   if (formation) $('#formation-select').value = String(formation.id);
   $('#board-status').textContent = t('status.loaded', { date: s.updated_at });
+  state.dirty = false;
   renderStrategyList();
   renderFormations();
   renderBoard();
@@ -1337,6 +1364,13 @@ async function loadStrategies() {
  * Google Drive is the same backup taking a different route out of the browser;
  * drive.js owns the OAuth and the REST calls, this only drives the UI.
  */
+
+/** A plausible name to start from; the prompt selects it, so typing replaces it. */
+function defaultCopyName() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 function backupFilename() {
   const pad = (n) => String(n).padStart(2, '0');
@@ -1395,6 +1429,9 @@ async function restoreBackup(payload, source) {
    * reload, it costs nothing to do.
    */
   rememberRestore(result.counts);
+  // The restored document is the one every device should end up with, so get
+  // it to Drive before the reload takes this page down mid-thought.
+  await Sync.flush();
   location.reload();
   return true;
 }
@@ -1438,6 +1475,76 @@ const onDrive = (fn) => (...args) =>
 
 let driveFiles = [];
 
+/* --------------------------------------------------------------- sync */
+
+/*
+ * The live file. Every local write nudges Sync, a poll brings back whatever
+ * another device wrote, and sync.js owns the policy for both. What lives here
+ * is only the half that needs the DOM: reading the document, putting one on
+ * screen, and asking the questions sync.js is not allowed to answer alone.
+ */
+
+const fileLabel = (f) => String(f.name || '').replace(/\.json$/i, '');
+
+function conflictCopyName(side) {
+  return t('data.conflictCopy', {
+    side: t(side === 'local' ? 'data.conflictThisDevice' : 'data.conflictOtherDevice'),
+    stamp: new Date().toLocaleString(getLocale()),
+  });
+}
+
+Sync.configure({
+  read: () => api('GET', '/api/backup'),
+
+  // "Nothing entered here yet", so a first sync can adopt Drive's copy without
+  // asking. Built-in formations do not count as work; they seed themselves.
+  isEmpty: async () => {
+    const { counts } = await api('GET', '/api/backup');
+    return counts.players === 0 && counts.staff === 0 && counts.strategies === 0;
+  },
+
+  apply: async (doc) => {
+    await api('PUT', '/api/backup', doc);
+    await reloadAll(state.strategy?.id ?? null);
+    refreshBackupCounts();
+  },
+
+  isBusy: isEditing,
+  onState: renderSyncState,
+  onPulled: () => toast(t('toast.syncPulled')),
+  onConflict: async () => (confirm(t('confirm.syncConflict')) ? 'local' : 'remote'),
+
+  // The side that loses the clash goes to Drive under its own name first, so
+  // answering the prompt wrongly costs a click rather than an afternoon.
+  snapshot: async (payload, side) => {
+    const name = conflictCopyName(side);
+    await Drive.upload(`${name}.json`, payload);
+    toast(t(side === 'local' ? 'toast.syncConflictKeptRemote' : 'toast.syncConflictKeptLocal',
+      { name }));
+    await refreshDriveFiles();
+  },
+});
+
+const syncReason = (code) =>
+  (code && hasKey(`error.${code}`) ? t(`error.${code}`) : String(code || ''));
+
+function renderSyncState(status = Sync.status()) {
+  const el = $('#sync-state');
+  const label = {
+    off: () => t('data.syncOff'),
+    syncing: () => t('data.syncSaving'),
+    conflict: () => t('data.syncConflict'),
+    waiting: () => t('data.syncWaiting'),
+    error: () => t('data.syncError', { reason: syncReason(status.error) }),
+    synced: () => (status.syncedAt
+      ? t('data.syncSyncedAt',
+        { time: new Date(status.syncedAt).toLocaleTimeString(getLocale()) })
+      : t('data.syncSynced')),
+  }[status.phase];
+  el.textContent = label ? label() : '';
+  el.dataset.phase = status.phase;
+}
+
 function renderDriveState() {
   const connected = Drive.isConnected();
   const configured = Boolean(Drive.getClientId());
@@ -1445,35 +1552,48 @@ function renderDriveState() {
   $('#drive-state').textContent = t(connected ? 'data.connected' : 'data.disconnected');
   $('#drive-connect').hidden = connected;
   $('#drive-disconnect').hidden = !connected;
-  $('#drive-upload').disabled = !connected;
+  $('#drive-snapshot').disabled = !connected;
   $('#drive-refresh').disabled = !connected;
   $('#drive-connect').disabled = !configured;
   $('#drive-hint').textContent = configured
     ? t('data.driveFolder', { folder: Drive.FOLDER_NAME })
     : t('data.driveNeedsClientId');
 
+  $('#drive-live').hidden = !connected;
+  $('#drive-live-hint').textContent = t('data.driveLiveHint', { name: Drive.CURRENT_NAME });
+  renderSyncState();
+
   if (!connected) driveFiles = [];
   renderDriveFiles();
 }
 
+/** The live file syncs itself and is not something you restore or delete. */
+const namedCopies = () => driveFiles.filter((f) =>
+  !Drive.isCurrent(f) && f.id !== Sync.currentFileId());
+
 function renderDriveFiles() {
   const list = $('#drive-files');
-  if (!Drive.isConnected()) {
+  const connected = Drive.isConnected();
+  $('#drive-copies').hidden = !connected;
+  if (!connected) {
     list.innerHTML = '';
     return;
   }
-  if (!driveFiles.length) {
+  const copies = namedCopies();
+  if (!copies.length) {
     list.innerHTML = `<li class="hint">${esc(t('data.driveEmpty'))}</li>`;
     return;
   }
-  list.innerHTML = driveFiles.map((f, i) => `
+  // Addressed by file id: the list is filtered, so a row's position in it is
+  // not a position in `driveFiles`.
+  list.innerHTML = copies.map((f) => `
     <li class="drive-file">
       <span class="title">
-        ${esc(f.name)}
+        ${esc(fileLabel(f))}
         <span class="sub">${esc(new Date(f.modifiedTime).toLocaleString(getLocale()))}</span>
       </span>
-      <button class="btn btn-sm" data-drive-restore="${i}">${esc(t('data.driveRestore'))}</button>
-      <button class="btn btn-sm btn-danger" data-drive-delete="${i}"
+      <button class="btn btn-sm" data-drive-restore="${esc(f.id)}">${esc(t('data.driveRestore'))}</button>
+      <button class="btn btn-sm btn-danger" data-drive-delete="${esc(f.id)}"
               title="${esc(t('data.driveDelete'))}">×</button>
     </li>`).join('');
 }
@@ -1508,6 +1628,9 @@ function initBackupView() {
   clientIdField.value = Drive.getClientId();
   clientIdField.addEventListener('change', () => {
     clientIdField.value = Drive.setClientId(clientIdField.value);
+    // Another client ID can mean another account, and so another live file.
+    // The old baseline would only describe a file this app can no longer see.
+    Sync.forget();
     renderDriveState();
   });
   // An id already configured means the setup details can stay folded away.
@@ -1519,33 +1642,51 @@ function initBackupView() {
     toast(t('toast.driveConnected'));
     // Listing is a separate call; its own failure toast should win, not this one.
     await refreshDriveFiles();
+    await Sync.start();
+    renderDriveState();
   }));
 
   $('#drive-disconnect').addEventListener('click', () => {
+    // Stop, not forget: the baseline is what lets the next sign-in pick up
+    // where this one left off instead of asking about a clash that never was.
+    Sync.stop();
     Drive.disconnect();
     renderDriveState();
   });
 
-  $('#drive-upload').addEventListener('click', onDrive(async () => {
+  $('#drive-snapshot').addEventListener('click', onDrive(async () => {
+    const name = (prompt(t('prompt.snapshotName'), defaultCopyName()) || '').trim();
+    if (!name) return;
+
+    // Re-listed first: deciding "is this name taken?" from a stale list is how
+    // a folder ends up with two copies that claim to be the same thing.
+    driveFiles = await Drive.list();
+    const existing = namedCopies().find((f) => fileLabel(f) === name);
+    if (existing && !confirm(t('confirm.snapshotOverwrite', { name }))) return;
+
     const payload = await api('GET', '/api/backup');
-    await Drive.upload(backupFilename(), payload);
+    if (existing) await Drive.overwrite(existing.id, payload);
+    else await Drive.upload(`${name}.json`, payload);
+
     await refreshDriveFiles();
-    toast(t('toast.driveSaved', { folder: Drive.FOLDER_NAME }));
+    toast(t('toast.driveSnapshotSaved', { name, folder: Drive.FOLDER_NAME }));
   }));
 
   $('#drive-refresh').addEventListener('click', () => refreshDriveFiles());
 
   $('#drive-files').addEventListener('click', onDrive(async (event) => {
+    const byId = (id) => driveFiles.find((f) => f.id === id);
+
     const restore = event.target.closest('[data-drive-restore]');
     if (restore) {
-      const file = driveFiles[Number(restore.dataset.driveRestore)];
-      await restoreBackup(await Drive.download(file.id), file.name);
+      const file = byId(restore.dataset.driveRestore);
+      if (file) await restoreBackup(await Drive.download(file.id), fileLabel(file));
       return;
     }
     const del = event.target.closest('[data-drive-delete]');
     if (del) {
-      const file = driveFiles[Number(del.dataset.driveDelete)];
-      if (!confirm(t('confirm.driveDelete', { name: file.name }))) return;
+      const file = byId(del.dataset.driveDelete);
+      if (!file || !confirm(t('confirm.driveDelete', { name: fileLabel(file) }))) return;
       await Drive.remove(file.id);
       await refreshDriveFiles();
       toast(t('toast.driveDeleted'));
@@ -1560,13 +1701,22 @@ function initBackupView() {
 
 /* ================================================================ boot */
 
-/** Reads the whole document into the UI. Also used after a restore. */
-async function loadAll() {
+/**
+ * Reads the whole document into the UI. Used at boot, and again whenever the
+ * document changes underneath — a restore, or an update from another device.
+ * Stays on the strategy you had open, as long as it survived the change.
+ */
+async function reloadAll(preferId = null) {
   await loadFormations();
   await Promise.all([loadPlayers(), loadStaff(), loadStrategies()]);
-  if (state.strategies.length) await openStrategy(state.strategies[0].id);
+  const pick = state.strategies.some((s) => s.id === preferId)
+    ? preferId
+    : (state.strategies[0]?.id ?? null);
+  if (pick !== null) await openStrategy(pick);
   else newStrategy();
 }
+
+const loadAll = () => reloadAll();
 
 (async function init() {
   setLocale(preferredLocale());
@@ -1592,4 +1742,7 @@ async function loadAll() {
   } catch (err) {
     toast(err.message, true);
   }
+  // Started only once the first read is done: an update arriving from another
+  // device rebuilds the same views, and the two must not run at each other.
+  if (Drive.isConnected()) Sync.start();
 })();

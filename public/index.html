@@ -330,12 +330,22 @@
 
           <div class="row">
             <button class="btn btn-primary" id="drive-connect" data-i18n="data.connect">Connect</button>
-            <button class="btn" id="drive-upload" data-i18n="data.driveSave">Save to Drive</button>
+            <button class="btn" id="drive-snapshot" data-i18n="data.driveSnapshot">Save a named copy…</button>
             <button class="btn" id="drive-refresh" data-i18n="data.driveRefresh">Refresh</button>
             <button class="btn" id="drive-disconnect" data-i18n="data.disconnect">Disconnect</button>
           </div>
 
           <p class="hint scope" id="drive-hint"></p>
+
+          <div class="drive-live" id="drive-live" hidden>
+            <div class="panel-head">
+              <h3 data-i18n="data.driveLive">Live file</h3>
+              <span class="count" id="sync-state"></span>
+            </div>
+            <p class="hint" id="drive-live-hint"></p>
+          </div>
+
+          <h3 class="drive-copies" id="drive-copies" data-i18n="data.driveCopies" hidden>Named copies</h3>
           <ul class="list" id="drive-files"></ul>
         </div>
       </div>
@@ -350,6 +360,7 @@
   <script src="kickoff.js"></script>
   <script src="store.js"></script>
   <script src="drive.js"></script>
+  <script src="sync.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -26,6 +26,11 @@
   const UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
   const FOLDER_MIME = 'application/vnd.google-apps.folder';
   const FOLDER_NAME = 'Soccer Field Manager';
+  // The one file every device syncs through. Everything else in the folder is
+  // a named copy the user asked for by hand.
+  const CURRENT_NAME = 'Current.json';
+  const ROLE_KEY = 'sfmRole';
+  const ROLE_CURRENT = 'current';
   const CLIENT_ID_KEY = 'sfm.drive.clientId';
   const SESSION_KEY = 'sfm.drive.session';
   // A minute of slack so a token cannot expire mid-upload. `isConnected` uses
@@ -259,20 +264,29 @@
     return folderId;
   }
 
-  const FIELDS = 'id,name,modifiedTime';
+  // `version` climbs on every change Drive records, which is all the sync loop
+  // needs to tell "someone else wrote" from "still ours" without downloading.
+  const FIELDS = 'id,name,modifiedTime,version,appProperties';
 
-  /** Writes a new backup file into the folder. */
-  async function upload(name, payload) {
-    const parent = await backupFolder();
+  /** The metadata + content body Drive wants when creating a file. */
+  function multipartBody(metadata, payload) {
     // Random boundary: a player's notes could otherwise contain a fixed one.
     const boundary = `sfm${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
     const part = 'Content-Type: application/json; charset=UTF-8';
     const body = [
-      `--${boundary}`, part, '',
-      JSON.stringify({ name, parents: [parent], mimeType: 'application/json' }),
+      `--${boundary}`, part, '', JSON.stringify(metadata),
       `--${boundary}`, part, '', JSON.stringify(payload, null, 2),
       `--${boundary}--`, '',
     ].join('\r\n');
+    return { boundary, body };
+  }
+
+  /** Writes a new file into the folder. `role` marks the live sync file. */
+  async function upload(name, payload, role) {
+    const parent = await backupFolder();
+    const metadata = { name, parents: [parent], mimeType: 'application/json' };
+    if (role) metadata.appProperties = { [ROLE_KEY]: role };
+    const { boundary, body } = multipartBody(metadata, payload);
 
     const response = await driveFetch(
       `${UPLOAD}/files?uploadType=multipart&fields=${FIELDS}`,
@@ -283,6 +297,42 @@
       });
     return response.json();
   }
+
+  /** Replaces a file's contents, leaving its name, id and marker alone. */
+  async function overwrite(fileId, payload) {
+    const response = await driveFetch(
+      `${UPLOAD}/files/${encodeURIComponent(fileId)}?uploadType=media&fields=${FIELDS}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+        body: JSON.stringify(payload, null, 2),
+      });
+    return response.json();
+  }
+
+  /** One small request: has anyone written to this file since we last looked? */
+  async function meta(fileId) {
+    const response = await driveFetch(
+      `${API}/files/${encodeURIComponent(fileId)}?fields=${FIELDS}`);
+    return response.json();
+  }
+
+  /**
+   * The live file, located by its marker rather than its name, so renaming it
+   * in Drive cannot quietly fork one squad into two.
+   */
+  async function findCurrent() {
+    const parent = await backupFolder();
+    const query = `'${parent}' in parents and trashed=false`
+      + ` and appProperties has { key='${ROLE_KEY}' and value='${ROLE_CURRENT}' }`;
+    const response = await driveFetch(`${API}/files?q=${encodeURIComponent(query)}`
+      + `&orderBy=createdTime&pageSize=1&fields=files(${FIELDS})`);
+    return ((await response.json()).files || [])[0] || null;
+  }
+
+  const createCurrent = (payload) => upload(CURRENT_NAME, payload, ROLE_CURRENT);
+
+  const isCurrent = (file) => file?.appProperties?.[ROLE_KEY] === ROLE_CURRENT;
 
   /** The backups in the folder, newest first. */
   async function list() {
@@ -311,6 +361,7 @@
   root.Drive = {
     DriveError,
     FOLDER_NAME,
+    CURRENT_NAME,
     SCOPE,
     getClientId,
     setClientId,
@@ -318,6 +369,11 @@
     connect,
     disconnect,
     upload,
+    overwrite,
+    meta,
+    findCurrent,
+    createCurrent,
+    isCurrent,
     list,
     download,
     remove,

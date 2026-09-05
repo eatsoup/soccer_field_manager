@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node scripts/serve.js",
     "check:i18n": "node scripts/check-i18n.js",
-    "test": "node scripts/test-store.js && node scripts/check-i18n.js"
+    "test": "node scripts/test-store.js && node scripts/test-sync.js && node scripts/check-i18n.js"
   },
   "engines": {
     "node": ">=18"

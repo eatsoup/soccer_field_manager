@@ -464,6 +464,25 @@ textarea { resize: vertical; }
 .data-setup[open] summary { margin-bottom: 8px; }
 .data-setup input { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 
+/* the live file: its own block, so it does not read as one of the copies */
+.drive-live {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-2);
+}
+.drive-live h3 { margin: 0; font-size: 13px; }
+.drive-live .hint { margin: 4px 0 0; }
+
+/* The sync state earns a colour only when it wants something from you. */
+#sync-state[data-phase="synced"] { color: var(--accent); }
+#sync-state[data-phase="waiting"],
+#sync-state[data-phase="conflict"] { color: var(--gk); }
+#sync-state[data-phase="error"] { color: var(--danger); }
+
+.drive-copies { margin: 16px 0 0; font-size: 13px; }
+
 #drive-files { margin-top: 10px; }
 .drive-file { cursor: default; align-items: center; }
 .drive-file .title { line-height: 1.3; white-space: normal; }
