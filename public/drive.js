@@ -13,8 +13,9 @@
  *     shared one to fall back on, so the app asks for it and remembers it.
  *   - The scope is `drive.file`, the narrowest one that works: this app can
  *     only ever see the files it created itself, never the rest of your Drive.
- *   - The token lives in memory for about an hour and is never written to
- *     localStorage; closing the tab signs you out.
+ *   - The token is good for about an hour and is kept in sessionStorage, so a
+ *     page reload does not sign you out but closing the tab still does. It
+ *     never reaches localStorage, where it would outlive the browsing session.
  *
  * Like store.js, failures carry a stable `code` that the browser translates.
  */
@@ -26,6 +27,11 @@
   const FOLDER_MIME = 'application/vnd.google-apps.folder';
   const FOLDER_NAME = 'Soccer Field Manager';
   const CLIENT_ID_KEY = 'sfm.drive.clientId';
+  const SESSION_KEY = 'sfm.drive.session';
+  // A minute of slack so a token cannot expire mid-upload. `isConnected` uses
+  // it too: a token this tool would refuse to reuse is not a live connection,
+  // and saying otherwise invites a popup from code that cannot open one.
+  const EXPIRY_SLACK = 60_000;
 
   class DriveError extends Error {
     constructor(code, message, params) {
@@ -70,7 +76,50 @@
   let folderId = null;
   let gisPromise = null;
 
-  const isConnected = () => Boolean(token) && Date.now() < tokenExpiry;
+  const isConnected = () => Boolean(token) && Date.now() < tokenExpiry - EXPIRY_SLACK;
+
+  function rememberSession() {
+    try {
+      root.sessionStorage.setItem(SESSION_KEY,
+        JSON.stringify({ clientId: getClientId(), token, tokenExpiry, folderId }));
+    } catch {
+      // Without sessionStorage the token lasts for this page load only, which
+      // is exactly where we were before.
+    }
+  }
+
+  function forgetSession() {
+    try {
+      root.sessionStorage.removeItem(SESSION_KEY);
+    } catch {
+      // Nothing stored means nothing to clear.
+    }
+  }
+
+  /*
+   * Brings back the token a reload would otherwise drop. A session saved under
+   * a different client id belongs to a different app registration, and one too
+   * close to expiry would only send the next call looking for a popup it
+   * cannot open, so both are discarded rather than trusted.
+   */
+  (function resumeSession() {
+    let saved = null;
+    try {
+      saved = JSON.parse(root.sessionStorage.getItem(SESSION_KEY) || 'null');
+    } catch {
+      saved = null;
+    }
+    if (!saved || typeof saved !== 'object') return;
+    if (saved.clientId !== getClientId()
+      || !saved.token
+      || !(Date.now() < Number(saved.tokenExpiry) - EXPIRY_SLACK)) {
+      forgetSession();
+      return;
+    }
+    token = saved.token;
+    tokenExpiry = Number(saved.tokenExpiry);
+    folderId = saved.folderId || null;
+  })();
 
   function loadGis() {
     if (root.google?.accounts?.oauth2) return Promise.resolve();
@@ -105,8 +154,7 @@
    * Call it only from a click handler — browsers block the popup otherwise.
    */
   async function accessToken() {
-    // A minute of slack so a token cannot expire mid-upload.
-    if (token && Date.now() < tokenExpiry - 60_000) return token;
+    if (token && Date.now() < tokenExpiry - EXPIRY_SLACK) return token;
 
     const clientId = getClientId();
     if (!clientId) throw new DriveError('driveNoClientId', 'No Google client ID configured');
@@ -129,6 +177,7 @@
         }
         token = response.access_token;
         tokenExpiry = Date.now() + (Number(response.expires_in) || 3600) * 1000;
+        rememberSession();
         resolve(token);
       };
       tokenClient.error_callback = (err) => reject(authError(err));
@@ -153,6 +202,7 @@
     token = null;
     tokenExpiry = 0;
     folderId = null;
+    forgetSession();
   }
 
   /** Proves the client id works and warms the token, without touching files. */
@@ -177,6 +227,7 @@
     if (response.status === 401) {
       token = null; // expired or revoked: the next call re-authenticates
       tokenExpiry = 0;
+      forgetSession();
       throw new DriveError('driveExpired', 'The Google Drive session expired');
     }
     if (!response.ok) {
@@ -195,6 +246,7 @@
     const existing = (await found.json()).files || [];
     if (existing.length) {
       folderId = existing[0].id;
+      rememberSession();
       return folderId;
     }
     const created = await driveFetch(`${API}/files?fields=id`, {
@@ -203,6 +255,7 @@
       body: JSON.stringify({ name: FOLDER_NAME, mimeType: FOLDER_MIME }),
     });
     folderId = (await created.json()).id;
+    rememberSession();
     return folderId;
   }
 

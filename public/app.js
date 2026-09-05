@@ -1373,10 +1373,44 @@ async function restoreBackup(payload, source) {
   // A queued autosave would otherwise write the pre-restore strategy back.
   clearTimeout(state.saveTimer);
   const result = await api('PUT', '/api/backup', payload);
-  await loadAll();
-  refreshBackupCounts();
-  toast(t('toast.restored', result.counts));
+
+  /*
+   * A restore swaps the whole document out from under a running page, and
+   * re-reading the rows is not enough to catch up with that: the open
+   * strategy, the board's phase, the drawing tool and the formation preview
+   * all live in module state that points at ids the restore just replaced.
+   * Reloading is the only way to be sure the screen shows what was restored
+   * rather than a half-updated mix — and now that the Drive session survives a
+   * reload, it costs nothing to do.
+   */
+  rememberRestore(result.counts);
+  location.reload();
   return true;
+}
+
+/*
+ * The reload above kills the toast that would have confirmed the restore, so
+ * it is parked here and shown once the page comes back up.
+ */
+const RESTORED_KEY = 'sfm.restored';
+
+function rememberRestore(counts) {
+  try {
+    sessionStorage.setItem(RESTORED_KEY, JSON.stringify(counts));
+  } catch {
+    // The toast is a nicety; the reload is the part that matters.
+  }
+}
+
+function takeRestored() {
+  let counts = null;
+  try {
+    counts = JSON.parse(sessionStorage.getItem(RESTORED_KEY) || 'null');
+    sessionStorage.removeItem(RESTORED_KEY);
+  } catch {
+    counts = null;
+  }
+  return counts;
 }
 
 /* -------------------------------------------------------------- drive */
@@ -1508,6 +1542,9 @@ function initBackupView() {
   }));
 
   renderDriveState();
+  // A reload keeps the Drive session, so the file list should come back with
+  // it rather than waiting for a Refresh the user has no reason to expect.
+  if (Drive.isConnected()) refreshDriveFiles();
 }
 
 /* ================================================================ boot */
@@ -1535,8 +1572,12 @@ async function loadAll() {
   // whatever you do is gone when the tab closes, so say so.
   if (!Store.persistent) toast(t('toast.storageUnavailable'), true);
   initBackupView();
+  // Claimed before the load so a failure there cannot leave it to surface on
+  // some unrelated visit later.
+  const restored = takeRestored();
   try {
     await loadAll();
+    if (restored) toast(t('toast.restored', restored));
   } catch (err) {
     toast(err.message, true);
   }
